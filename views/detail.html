@@ -1,0 +1,89 @@
+<div id="view-detail" class="view hidden">
+  <div class="page-header" style="max-width:680px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <button class="back-btn" onclick="goBack()">← Volver</button>
+      <div>
+        <h2 id="d-title" class="page-title"></h2>
+        <div id="d-status" style="margin-top:4px"></div>
+      </div>
+    </div>
+    <button class="btn-secondary" onclick="sendReceiptManual()">✉ Enviar comprobante</button>
+  </div>
+
+  <div class="detail-card">
+    <div class="detail-grid detail-divider-h">
+      <div class="detail-cell detail-divider-v">
+        <div class="detail-cell-label">Empleado</div>
+        <div id="d-email" class="detail-cell-value"></div>
+      </div>
+      <div class="detail-cell">
+        <div class="detail-cell-label">Fecha gasto</div>
+        <div id="d-date" class="detail-cell-value"></div>
+      </div>
+    </div>
+    <div class="detail-grid detail-divider-h">
+      <div class="detail-cell detail-divider-v">
+        <div class="detail-cell-label">Categoría</div>
+        <div id="d-category" class="detail-cell-value"></div>
+      </div>
+      <div class="detail-cell">
+        <div class="detail-cell-label">Monto</div>
+        <div id="d-total" class="detail-cell-value" style="font-size:20px;font-weight:800"></div>
+      </div>
+    </div>
+    <div class="detail-grid detail-divider-h" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="detail-cell detail-divider-v">
+        <div class="detail-cell-label">Tipo Documento</div>
+        <div id="d-doctype" class="detail-cell-value"></div>
+      </div>
+      <div class="detail-cell detail-divider-v">
+        <div class="detail-cell-label">N° Documento</div>
+        <div id="d-docnumber" class="detail-cell-value"></div>
+      </div>
+      <div class="detail-cell">
+        <div class="detail-cell-label">Proveedor</div>
+        <div id="d-provider" class="detail-cell-value"></div>
+      </div>
+    </div>
+    <div class="detail-full">
+      <div class="detail-cell-label">Notas</div>
+      <div id="d-notes" class="detail-cell-value" style="font-weight:400;color:#374151"></div>
+    </div>
+    <div class="detail-grid detail-divider-h">
+      <div class="detail-cell detail-divider-v">
+        <div class="detail-cell-label">Aprobador asignado</div>
+        <div id="d-approver" class="detail-cell-value"></div>
+      </div>
+      <div class="detail-cell">
+        <div class="detail-cell-label">Observaciones</div>
+        <div id="d-observations" class="detail-cell-value" style="font-weight:400;color:#374151"></div>
+      </div>
+    </div>
+    <div class="detail-full" style="border-bottom:0">
+      <div class="detail-cell-label" style="margin-bottom:8px">Archivos adjuntos</div>
+      <div id="d-receipts" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+
+  <!-- Nivel 1: Aprobación (PENDIENTE → APROBADO) -->
+  <div id="d-actions-l1" class="actions-card hidden">
+    <div class="actions-title">Decisión de aprobación</div>
+    <textarea id="d-comment-l1" class="comment-field" rows="2"
+              placeholder="Comentario opcional (motivo de rechazo, etc.)..."></textarea>
+    <div class="approve-row">
+      <button class="btn-approve" onclick="doDecision('APROBADO')">✓ Aprobar</button>
+      <button class="btn-reject"  onclick="doDecision('RECHAZADO')">✗ Rechazar</button>
+    </div>
+  </div>
+
+  <!-- Nivel 2: Autorización Gerencial (APROBADO → AUTORIZADO) -->
+  <div id="d-actions-l2" class="actions-card hidden">
+    <div class="actions-title" style="color:#7c3aed">🏛 Autorización Gerencial</div>
+    <textarea id="d-comment-l2" class="comment-field" rows="2"
+              placeholder="Comentario opcional..."></textarea>
+    <div class="approve-row">
+      <button class="btn-authorize" onclick="doDecision('AUTORIZADO')">✓ Autorizar</button>
+      <button class="btn-reject"    onclick="doDecision('RECHAZADO')">✗ Rechazar</button>
+    </div>
+  </div>
+</div>

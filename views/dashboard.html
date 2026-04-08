@@ -1,0 +1,51 @@
+<div id="view-dashboard" class="view hidden">
+  <div class="page-header">
+    <h2 class="page-title">Mis Rendiciones</h2>
+    <button class="btn-secondary" onclick="exportCSV()">⬇ Exportar CSV</button>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Rendiciones</div>
+      <div id="stat-count" class="stat-value">0</div>
+      <div id="stat-total" class="stat-sub">$0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pendientes</div>
+      <div id="stat-pending" class="stat-value val-yellow">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total aprobado</div>
+      <div id="stat-approved" class="stat-value val-green">$0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Rechazados</div>
+      <div id="stat-rejected" class="stat-value val-red">0</div>
+    </div>
+  </div>
+
+  <div class="table-card">
+    <div class="table-filters">
+      <input id="search" type="text" placeholder="🔍 Buscar por concepto, categoría o proveedor..."
+             class="input-filter" oninput="filterTable()">
+      <select id="filter-status" class="select-filter" onchange="filterTable()">
+        <option value="">Todos los estados</option>
+        <option>PENDIENTE</option>
+        <option>APROBADO</option>
+        <option>RECHAZADO</option>
+      </select>
+      <button class="btn-primary" onclick="navDashboard()" style="white-space:nowrap">↻ Actualizar</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th><th>Concepto</th><th>Categoría</th>
+            <th>Tipo Doc.</th><th>N° Documento</th><th>Monto</th><th>Estado</th><th>Aprobador</th>
+          </tr>
+        </thead>
+        <tbody id="exp-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>

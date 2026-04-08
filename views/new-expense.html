@@ -1,0 +1,142 @@
+<div id="view-new-expense" class="view hidden">
+  <div class="page-header" style="max-width:960px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <button class="back-btn" onclick="navDashboard()">← Volver</button>
+      <h2 class="page-title">Nueva Rendición</h2>
+    </div>
+    <!-- Toggle Individual / Múltiple -->
+    <div class="mode-toggle">
+      <button id="btn-mode-single" class="mode-btn mode-btn-active" onclick="setExpenseMode('single')">Individual</button>
+      <button id="btn-mode-bulk"   class="mode-btn"                 onclick="setExpenseMode('bulk')">Múltiple</button>
+    </div>
+  </div>
+
+  <!-- ── MODO INDIVIDUAL ── -->
+  <form id="expense-form" onsubmit="submitExpense(event)">
+    <div class="form-card">
+      <div class="form-grid col-2">
+        <div class="col-full">
+          <label for="f-title">Concepto *</label>
+          <input id="f-title" name="title" type="text" required
+                 placeholder="Ej: Almuerzo con cliente, Taxi aeropuerto..."
+                 class="input-field">
+        </div>
+        <div>
+          <label for="f-date">Fecha del gasto *</label>
+          <input id="f-date" name="fechaGasto" type="date" required class="input-field">
+        </div>
+        <div>
+          <label for="f-total">Monto (CLP) *</label>
+          <input id="f-total" name="total" type="number" min="1" step="1" required
+                 placeholder="0" class="input-field">
+        </div>
+        <div>
+          <label for="form-category">Categoría *</label>
+          <select id="form-category" name="category" required class="input-field">
+            <option value="">— Seleccionar —</option>
+          </select>
+        </div>
+        <div>
+          <label for="form-approver">Aprobador</label>
+          <select id="form-approver" name="approverEmail" class="input-field">
+            <option value="">Sin asignar</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-grid col-3" style="margin-top:18px">
+        <div>
+          <label for="f-doctype">Tipo documento *</label>
+          <select id="f-doctype" name="docType" required class="input-field">
+            <option value="">— Tipo —</option>
+            <option>BOLETA</option>
+            <option>FACTURA</option>
+            <option>BOUCHER</option>
+            <option>OTRO</option>
+          </select>
+        </div>
+        <div>
+          <label for="f-docnum">N° documento</label>
+          <input id="f-docnum" name="docNumber" type="text" placeholder="12345" class="input-field">
+        </div>
+        <div>
+          <label for="f-provider">Proveedor</label>
+          <input id="f-provider" name="provider" type="text" placeholder="Nombre del proveedor" class="input-field">
+        </div>
+      </div>
+
+      <div style="margin-top:18px">
+        <label for="f-notes">Notas</label>
+        <textarea id="f-notes" name="notes" rows="2"
+                  placeholder="Información adicional sobre el gasto..."
+                  class="input-field" style="resize:none"></textarea>
+      </div>
+
+      <div style="margin-top:18px">
+        <label>Archivos adjuntos (boletas, fotos, PDF)</label>
+        <label class="upload-zone">
+          <div class="upload-label">📎 Haz clic o arrastra archivos aquí</div>
+          <div class="upload-sub">JPG, PNG, PDF — máx. 10 MB por archivo</div>
+          <input type="file" multiple accept="image/*,.pdf" onchange="handleFiles(this)" style="display:none">
+        </label>
+        <div id="file-preview"></div>
+      </div>
+
+      <div class="form-actions" style="margin-top:24px">
+        <button type="submit" class="btn-primary" style="flex:1">Registrar Rendición</button>
+        <button type="button" class="btn-secondary" onclick="navDashboard()">Cancelar</button>
+      </div>
+    </div>
+  </form>
+
+  <!-- ── MODO MÚLTIPLE ── -->
+  <div id="bulk-form" class="hidden">
+    <div class="form-card" style="max-width:960px">
+
+      <!-- Aprobador compartido -->
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <label for="bulk-approver">Aprobador (para todas las rendiciones)</label>
+          <select id="bulk-approver" class="input-field">
+            <option value="">Sin asignar</option>
+          </select>
+        </div>
+        <button type="button" class="btn-primary" onclick="addBulkRow()" style="margin-top:20px">
+          + Agregar fila
+        </button>
+      </div>
+
+      <!-- Tabla -->
+      <div style="overflow-x:auto">
+        <table class="bulk-table">
+          <thead>
+            <tr>
+              <th style="width:32px">#</th>
+              <th>Concepto *</th>
+              <th>Fecha *</th>
+              <th>Monto *</th>
+              <th>Categoría *</th>
+              <th>Tipo Doc *</th>
+              <th>N° Doc</th>
+              <th>Proveedor</th>
+              <th>Archivo</th>
+              <th style="width:32px"></th>
+            </tr>
+          </thead>
+          <tbody id="bulk-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="bulk-empty" class="empty-row" style="padding:32px;text-align:center;color:#9ca3af">
+        Haz clic en "+ Agregar fila" para comenzar
+      </div>
+
+      <div class="form-actions" style="margin-top:24px">
+        <button type="button" class="btn-primary" style="flex:1" onclick="submitBulk()">
+          Registrar todas las rendiciones
+        </button>
+        <button type="button" class="btn-secondary" onclick="navDashboard()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
