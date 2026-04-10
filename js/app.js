@@ -256,15 +256,17 @@ function openBatchDetail(batchName) {
   $('bd-authorized').textContent  = authorized;
   $('bd-total-footer').textContent = fmt(total);
 
-  const canApprove = state.role === 'APROBADOR' || state.role === 'ADMIN';
-  const canAuth    = state.role === 'GERENTE'    || state.role === 'ADMIN';
+  const currentEmail = getCurrentUser()?.email?.toLowerCase();
+  const canApprove = state.role === 'APROBADOR' || _isAdmin();
+  const canAuth    = state.role === 'GERENTE'    || _isAdmin();
 
   $('bd-tbody').innerHTML = list.map(e => {
+    const isOwn = e.email === currentEmail;
     let actionBtn = '';
-    if (canApprove && e.status === 'PENDIENTE') {
+    if (canApprove && e.status === 'PENDIENTE' && !isOwn) {
       actionBtn = `<button class="btn-primary" style="font-size:12px;padding:4px 10px"
                     onclick="openDetail(${e.rowIndex},'approvals')">Revisar</button>`;
-    } else if (canAuth && e.status === 'APROBADO') {
+    } else if (canAuth && e.status === 'APROBADO' && !isOwn) {
       actionBtn = `<button class="btn-primary" style="font-size:12px;padding:4px 10px;background:#7c3aed"
                     onclick="openDetail(${e.rowIndex},'gerencia')">Autorizar</button>`;
     } else {
@@ -372,6 +374,10 @@ async function doDecision(newStatus) {
   const e    = state.currentExpense;
   if (!e) return;
   const user = getCurrentUser();
+  if (e.email === user.email.toLowerCase()) {
+    toast('No puedes aprobar tus propias rendiciones', 'error');
+    return;
+  }
   const commentEl = newStatus === 'AUTORIZADO' ? $('d-comment-l2') : $('d-comment-l1');
   const comment   = commentEl?.value.trim() || '';
   const label     = { APROBADO: 'Aprobado', AUTORIZADO: 'Autorizado', RECHAZADO: 'Rechazado' }[newStatus] || newStatus;
