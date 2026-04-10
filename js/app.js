@@ -472,6 +472,42 @@ async function handleFiles(input) {
   if (btn) btn.style.display = window._originalFiles.length ? 'flex' : 'none';
 }
 
+async function autoFillBulkRow(rowId) {
+  const file = window._bulkOriginalFiles?.get(rowId);
+  if (!file) { toast('No hay archivo en esta fila para analizar', 'info'); return; }
+
+  const btn = $(`bulk-autofill-${rowId}`);
+  if (btn) { btn.disabled = true; btn.textContent = '⏳...'; }
+
+  try {
+    const data = await extractFromDocument(file);
+    const row  = $(`bulk-row-${rowId}`);
+    if (!row) return;
+
+    const inputs  = row.querySelectorAll('input[type="text"], input[type="number"], input[type="date"]');
+    const selects = row.querySelectorAll('select');
+    // inputs order: concepto(0), fecha(1), monto(2), N°Doc(3), proveedor(4)
+    // selects order: categoría(0), tipo doc(1)
+
+    if (data.date)     inputs[1].value  = data.date;
+    if (data.total)    inputs[2].value  = Math.round(Number(data.total));
+    if (data.docNumber) inputs[3].value = data.docNumber;
+    if (data.provider)  inputs[4].value = data.provider;
+
+    if (data.docType) {
+      const opts = ['BOLETA','FACTURA','BOUCHER','OTRO'];
+      const match = opts.find(o => o === data.docType.toUpperCase());
+      if (match) selects[1].value = match;
+    }
+
+    toast('Fila completada con IA — revisa antes de enviar', 'success');
+  } catch (e) {
+    toast('Error al analizar: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ IA'; }
+  }
+}
+
 async function autoFillFromReceipt() {
   const file = window._originalFiles[0];
   if (!file) { toast('Primero sube un archivo para autocompletar', 'info'); return; }
@@ -544,9 +580,10 @@ function setExpenseMode(mode) {
 }
 
 function _resetBulk() {
-  window._bulkRowCount  = 0;
-  window._bulkReceipts  = new Map();
-  window._bulkUploading = new Set();
+  window._bulkRowCount      = 0;
+  window._bulkReceipts      = new Map();
+  window._bulkOriginalFiles = new Map();
+  window._bulkUploading     = new Set();
   const tbody = $('bulk-tbody');
   if (tbody) tbody.innerHTML = '';
   const empty = $('bulk-empty');
@@ -603,6 +640,11 @@ function addBulkRow() {
                onchange="handleBulkFiles(this,${id})" style="display:none">
       </label>
       <div id="bulk-status-${id}" class="bulk-file-status"></div>
+      <button type="button" id="bulk-autofill-${id}"
+              onclick="autoFillBulkRow(${id})"
+              style="display:none;margin-top:4px;background:linear-gradient(135deg,#7c3aed,#6d28d9);
+                     color:#fff;border:none;padding:3px 8px;border-radius:6px;font-size:11px;
+                     cursor:pointer;width:100%">✨ IA</button>
     </td>
     <td class="bulk-td">
       <button type="button" class="btn-danger-sm" onclick="removeBulkRow(${id})" title="Eliminar fila">✕</button>
@@ -629,8 +671,15 @@ async function handleBulkFiles(input, rowId) {
       const arr = window._bulkReceipts.get(rowId) || [];
       arr.push(uploaded);
       window._bulkReceipts.set(rowId, arr);
+      // Guardar el primer archivo original para OCR
+      if (!window._bulkOriginalFiles.has(rowId)) {
+        window._bulkOriginalFiles.set(rowId, file);
+      }
       statusEl.textContent = `✅ ${arr.length} archivo(s)`;
       statusEl.style.color = '#15803d';
+      // Mostrar botón ✨ IA
+      const btn = $(`bulk-autofill-${rowId}`);
+      if (btn) btn.style.display = 'block';
     } catch (e) {
       statusEl.textContent = `❌ Error`;
       statusEl.style.color = '#dc2626';
