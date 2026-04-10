@@ -2,7 +2,7 @@ const CONFIG = {
   CLIENT_ID:       '455263097487-8eo55fa15bvq0ctcnhi1l8clet3pctp0.apps.googleusercontent.com',
   SHEET_ID:        '1YCr7t4W0WMMRa4e_jS8vN4K8QNGrqYhgXxjakL4YJPU',
   DRIVE_FOLDER_ID: '1F6BHuiP1p1d2-4Kil09VnNxYnF0SpaTn',
-  GEMINI_API_KEY:  'AIzaSyCOalxhJReAGDWvzd28hvzBcPhTmwCYyJk',
+  GEMINI_API_KEY:  'AIzaSyD5vkdwM0icKDVktLttsw42xZf5XW2QQvU',
   RECEIPTS_EMAIL:  '', // ← Pon aquí el Gmail que crees para recibir comprobantes
   SCOPES: [
     'https://www.googleapis.com/auth/spreadsheets',
