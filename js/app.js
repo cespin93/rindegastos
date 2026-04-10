@@ -237,28 +237,37 @@ function _renderTable(exps) {
   tbody.innerHTML = rows.join('');
 }
 
-function openBatchDetail(batchName) {
+function openBatchDetail(batchName, context = 'dashboard') {
   const list = state.expenses.filter(e => e.batchName === batchName);
   if (!list.length) return;
 
+  state._currentBatch   = batchName;
+  state._batchContext   = context;
+
   $('bd-name').textContent = batchName;
-  $('bd-meta').textContent = `Enviado por: ${list[0].email}`;
+  $('bd-meta').textContent = `Enviado por: ${_getUserName(list[0].email) || list[0].email}`;
 
   const total      = list.reduce((s, e) => s + e.total, 0);
   const pending    = list.filter(e => e.status === 'PENDIENTE').length;
   const approved   = list.filter(e => e.status === 'APROBADO').length;
   const authorized = list.filter(e => e.status === 'AUTORIZADO').length;
 
-  $('bd-count').textContent       = list.length;
-  $('bd-total').textContent       = fmt(total);
-  $('bd-pending').textContent     = pending;
-  $('bd-approved').textContent    = approved;
-  $('bd-authorized').textContent  = authorized;
+  $('bd-count').textContent        = list.length;
+  $('bd-total').textContent        = fmt(total);
+  $('bd-pending').textContent      = pending;
+  $('bd-approved').textContent     = approved;
+  $('bd-authorized').textContent   = authorized;
   $('bd-total-footer').textContent = fmt(total);
 
+  // Botones de cabecera según contexto
+  const canAuth     = (state.role === 'GERENTE' || _isAdmin()) && context === 'gerencia';
+  const authAllBtn  = $('bd-auth-all-btn');
+  const printBtn    = $('bd-print-btn');
+  if (authAllBtn) authAllBtn.classList.toggle('hidden', !canAuth || approved === 0);
+  if (printBtn)   printBtn.classList.toggle('hidden', authorized === 0);
+
   const currentEmail = getCurrentUser()?.email?.toLowerCase();
-  const canApprove = state.role === 'APROBADOR' || _isAdmin();
-  const canAuth    = state.role === 'GERENTE'    || _isAdmin();
+  const canApprove   = state.role === 'APROBADOR' || _isAdmin();
 
   $('bd-tbody').innerHTML = list.map(e => {
     const isOwn = e.email === currentEmail && state.role !== 'SUPERADMIN';
@@ -283,11 +292,124 @@ function openBatchDetail(batchName) {
         <td class="td td-muted">${e.provider || '—'}</td>
         <td class="td td-bold">${fmt(e.total)}</td>
         <td class="td">${badge(e.status)}</td>
+        <td class="td td-muted">${_getUserName(e.approverEmail)}</td>
         <td class="td">${actionBtn}</td>
       </tr>`;
   }).join('');
 
   showView('view-batch-detail');
+}
+
+async function authorizeAll() {
+  const batchName = state._currentBatch;
+  const list      = state.expenses.filter(e => e.batchName === batchName && e.status === 'APROBADO');
+  if (!list.length) { toast('No hay gastos aprobados para autorizar', 'info'); return; }
+
+  if (!confirm(`¿Autorizar los ${list.length} gasto(s) aprobados del conjunto "${batchName}"?`)) return;
+
+  const user      = getCurrentUser();
+  const authName  = _getUserName(user.email) || user.email;
+  const obs       = `Autorizado por ${authName} el ${new Date().toLocaleString('es-CL')}`;
+
+  // Capturar aprobadores antes de sobreescribir
+  const snapshot  = list.map(e => ({ rowIndex: e.rowIndex, approver: e.approverEmail, title: e.title }));
+
+  loading(true);
+  try {
+    for (const e of list) {
+      await updateExpenseStatus(e.rowIndex, 'AUTORIZADO', obs, user.email);
+      e.status       = 'AUTORIZADO';
+      e.observations = obs;
+    }
+    await addAudit('AUTORIZAR_CONJUNTO', user.email, { batchName, count: list.length });
+    toast(`${list.length} gastos autorizados. Abriendo informe...`, 'success');
+    printAuthReport(batchName, user.email, snapshot);
+    openBatchDetail(batchName, 'gerencia');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+function printAuthReport(batchName, authEmail, snapshot) {
+  const batchName_ = batchName || state._currentBatch;
+  const list       = state.expenses.filter(e => e.batchName === batchName_);
+  const total      = list.reduce((s, e) => s + e.total, 0);
+  const authName   = _getUserName(authEmail) || authEmail || _getUserName(getCurrentUser()?.email);
+  const fecha      = new Date().toLocaleDateString('es-CL');
+
+  const rows = list.map(e => {
+    const snap         = snapshot?.find(s => s.rowIndex === e.rowIndex);
+    const approverName = _getUserName(snap?.approver || e.approverEmail);
+    return `<tr>
+      <td>${fmtDate(e.fechaGasto)}</td>
+      <td>${e.title}</td>
+      <td>${e.category}</td>
+      <td>${e.docType}</td>
+      <td>${e.docNumber || '—'}</td>
+      <td>${e.provider || '—'}</td>
+      <td style="text-align:right;font-weight:600">${fmt(e.total)}</td>
+      <td>${approverName}</td>
+      <td>${authName}</td>
+    </tr>`;
+  }).join('');
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<title>Informe Autorización - ${batchName_}</title>
+<style>
+  body{font-family:Arial,sans-serif;color:#111;margin:40px;font-size:13px}
+  h1{font-size:20px;margin:0 0 4px}
+  .meta{color:#6b7280;font-size:12px;margin-bottom:24px;line-height:1.8}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{background:#1e40af;color:#fff;padding:8px;text-align:left;font-size:11px}
+  td{padding:6px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+  tr:nth-child(even) td{background:#f9fafb}
+  .total-row td{font-weight:700;background:#eff6ff;border-top:2px solid #1e40af;font-size:13px}
+  .footer{margin-top:60px;display:flex;justify-content:space-around;page-break-inside:avoid}
+  .sig{text-align:center;width:220px}
+  .sig-line{border-top:1px solid #374151;margin:0 auto 8px;width:180px}
+  .sig-label{font-size:11px;color:#374151;line-height:1.6}
+  @media print{body{margin:20px}.no-print{display:none}}
+</style></head><body>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+  <div>
+    <h1>Informe de Autorización de Gastos</h1>
+    <div class="meta">
+      <strong>Conjunto:</strong> ${batchName_}<br>
+      <strong>Fecha de emisión:</strong> ${fecha}<br>
+      <strong>Autorizado por:</strong> ${authName}
+    </div>
+  </div>
+  <button class="no-print" onclick="window.print()"
+    style="padding:8px 18px;background:#1e40af;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">
+    🖨 Imprimir
+  </button>
+</div>
+<table>
+  <thead><tr>
+    <th>Fecha</th><th>Concepto</th><th>Categoría</th>
+    <th>Tipo Doc</th><th>N° Doc</th><th>Proveedor</th>
+    <th>Monto</th><th>Aprobado por</th><th>Autorizado por</th>
+  </tr></thead>
+  <tbody>
+    ${rows}
+    <tr class="total-row">
+      <td colspan="6" style="text-align:right">Total del conjunto:</td>
+      <td>${fmt(total)}</td><td colspan="2"></td>
+    </tr>
+  </tbody>
+</table>
+<div class="footer">
+  <div class="sig"><div class="sig-line"></div>
+    <div class="sig-label">Firma Aprobador</div></div>
+  <div class="sig"><div class="sig-line"></div>
+    <div class="sig-label"><strong>${authName}</strong><br>Gerente Autorizador</div></div>
+</div>
+</body></html>`);
+  win.document.close();
 }
 
 function filterTable() {
@@ -527,25 +649,66 @@ function _renderGerencia(exps) {
       </div>`;
     return;
   }
-  el.innerHTML = exps.map(e => `
-    <div onclick="openDetail(${e.rowIndex},'gerencia')" class="approval-card approval-card-gerencia">
-      <div class="approval-card-header">
-        <div>
-          <h3 class="approval-title">${e.title}</h3>
-          <p class="approval-email">${e.email}
-            <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${_getUserName(e.approverEmail)}</span>
-          </p>
+
+  // Agrupar por batchName
+  const batches = {};
+  const singles = [];
+  for (const e of exps) {
+    if (e.batchName) (batches[e.batchName] = batches[e.batchName] || []).push(e);
+    else singles.push(e);
+  }
+
+  let html = '';
+
+  // Conjuntos (batch)
+  for (const [name, list] of Object.entries(batches)) {
+    const total     = list.reduce((s, e) => s + e.total, 0);
+    const approvers = [...new Set(list.map(e => _getUserName(e.approverEmail)))].join(', ');
+    html += `
+      <div onclick="openBatchDetail('${name.replace(/'/g,"\\'")}','gerencia')" class="approval-card approval-card-gerencia">
+        <div class="approval-card-header">
+          <div>
+            <h3 class="approval-title">
+              <span style="font-size:11px;background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:10px;margin-right:6px">CONJUNTO</span>
+              ${name}
+            </h3>
+            <p class="approval-email">${list.length} gastos
+              <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${approvers}</span>
+            </p>
+          </div>
+          <span class="approval-amount">${fmt(total)}</span>
         </div>
-        <span class="approval-amount">${fmt(e.total)}</span>
-      </div>
-      <div class="approval-tags">
-        <span class="tag">${e.category}</span>
-        <span class="tag">${e.docType}</span>
-        <span class="tag">${fmtDate(e.fechaGasto)}</span>
-        ${e.receipts?.length ? `<span class="tag tag-purple">📎 ${e.receipts.length} archivo(s)</span>` : ''}
-        ${badge('APROBADO')}
-      </div>
-    </div>`).join('');
+        <div class="approval-tags">
+          ${badge('APROBADO')}
+          <span class="tag">📦 ${list.length} gastos pendientes de autorización</span>
+        </div>
+      </div>`;
+  }
+
+  // Gastos individuales
+  for (const e of singles) {
+    html += `
+      <div onclick="openDetail(${e.rowIndex},'gerencia')" class="approval-card approval-card-gerencia">
+        <div class="approval-card-header">
+          <div>
+            <h3 class="approval-title">${e.title}</h3>
+            <p class="approval-email">${e.email}
+              <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${_getUserName(e.approverEmail)}</span>
+            </p>
+          </div>
+          <span class="approval-amount">${fmt(e.total)}</span>
+        </div>
+        <div class="approval-tags">
+          <span class="tag">${e.category}</span>
+          <span class="tag">${e.docType}</span>
+          <span class="tag">${fmtDate(e.fechaGasto)}</span>
+          ${e.receipts?.length ? `<span class="tag tag-purple">📎 ${e.receipts.length} archivo(s)</span>` : ''}
+          ${badge('APROBADO')}
+        </div>
+      </div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 // ─── NUEVA RENDICIÓN ──────────────────────────
