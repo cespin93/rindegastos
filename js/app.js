@@ -752,6 +752,28 @@ async function showAdminTab(tab) {
   );
   if (tab === 'tab-users')      await _loadAdminUsers();
   if (tab === 'tab-categories') await _loadAdminCats();
+  if (tab === 'tab-config')     _loadGeminiKeyStatus();
+}
+
+function _loadGeminiKeyStatus() {
+  const saved = localStorage.getItem('gemini_api_key');
+  const input  = $('gemini-key-input');
+  const status = $('gemini-key-status');
+  if (saved) {
+    input.placeholder = '••••••••••••••••••••••••••••••••••••';
+    status.innerHTML  = '<span style="color:#16a34a">✅ Clave configurada en este navegador</span>';
+  } else {
+    status.innerHTML  = '<span style="color:#d97706">⚠️ Sin clave configurada — el autocompletar con IA no funcionará</span>';
+  }
+}
+
+function saveGeminiKey() {
+  const val = $('gemini-key-input').value.trim();
+  if (!val) { toast('Ingresa una clave válida', 'error'); return; }
+  localStorage.setItem('gemini_api_key', val);
+  $('gemini-key-input').value = '';
+  _loadGeminiKeyStatus();
+  toast('Clave Gemini guardada correctamente', 'success');
 }
 
 const ALL_ROLES = ['RENDIDOR', 'APROBADOR', 'GERENTE', 'ADMIN'];

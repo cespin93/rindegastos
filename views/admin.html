@@ -6,6 +6,8 @@
             onclick="showAdminTab('tab-users')">Usuarios</button>
     <button class="admin-tab-btn" data-tab="tab-categories"
             onclick="showAdminTab('tab-categories')">Categorías</button>
+    <button class="admin-tab-btn" data-tab="tab-config"
+            onclick="showAdminTab('tab-config')">Configuración</button>
   </div>
 
   <!-- Usuarios -->
@@ -27,6 +29,23 @@
           <tbody id="users-tbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- Configuración -->
+  <div id="tab-config" class="admin-tab hidden">
+    <div class="form-card" style="max-width:560px">
+      <h3 style="margin:0 0 6px;font-size:15px;font-weight:600">Clave API Gemini (OCR)</h3>
+      <p style="margin:0 0 16px;font-size:13px;color:#6b7280">
+        Necesaria para el autocompletar con IA. Se guarda solo en este navegador.<br>
+        Obtén una clave gratis en <strong>aistudio.google.com</strong>.
+      </p>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input id="gemini-key-input" type="password" class="input-field"
+               placeholder="AIzaSy..." style="flex:1;font-family:monospace">
+        <button class="btn-primary" onclick="saveGeminiKey()">Guardar</button>
+      </div>
+      <div id="gemini-key-status" style="margin-top:10px;font-size:13px"></div>
     </div>
   </div>
 

@@ -167,8 +167,11 @@ async function extractFromDocument(file) {
 }
 Si no puedes determinar algún campo con seguridad, usa null. Responde ÚNICAMENTE con el objeto JSON, sin texto adicional.`;
 
+  const geminiKey = localStorage.getItem('gemini_api_key') || CONFIG.GEMINI_API_KEY;
+  if (!geminiKey) throw new Error('Falta la clave Gemini. Configúrala en Administración → Configuración.');
+
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${CONFIG.GEMINI_API_KEY}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
