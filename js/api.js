@@ -76,7 +76,7 @@ function _tryJson(str, def) { try { return JSON.parse(str); } catch { return def
 
 // ─── CRUD Gastos ─────────────────────────────
 async function getExpenses() {
-  const rows = await sheetsGet('Rendiciones!A2:P');
+  const rows = await sheetsGet('Rendiciones!A2:Q');
   return rows.map((r, i) => _rowToExpense(r, i + 2));
 }
 
