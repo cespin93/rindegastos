@@ -196,9 +196,10 @@ function _renderTable(exps) {
     const statusCell = knownStatus
       ? badge(status)
       : `<span class="badge badge-gray">${status} revisados</span>`;
+    const batchDate = fmtDate(list[0].timestamp?.split('T')[0] || list[0].fechaGasto);
     rows.push(`
       <tr class="table-row" onclick="openBatchDetail('${name.replace(/'/g,"\\'")}')">
-        <td class="td">—</td>
+        <td class="td">${batchDate}</td>
         <td class="td td-bold">
           <span style="font-size:11px;background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:10px;margin-right:6px">CONJUNTO</span>
           ${name}
