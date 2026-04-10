@@ -139,7 +139,7 @@ async function navDashboard() {
     showView('view-dashboard');
     const all = await getExpenses();
     _mergeExpenses(all);
-    const mine = state.role === 'ADMIN'
+    const mine = (state.role === 'ADMIN' || state.role === 'GERENTE')
       ? all
       : all.filter(e => e.email === getCurrentUser().email.toLowerCase());
     _renderStats(mine);
@@ -181,7 +181,7 @@ function filterTable() {
   const q = $('search').value.toLowerCase();
   const s = $('filter-status').value;
   const user = getCurrentUser();
-  let exps = state.role === 'ADMIN'
+  let exps = (state.role === 'ADMIN' || state.role === 'GERENTE')
     ? state.expenses
     : state.expenses.filter(e => e.email === user.email.toLowerCase());
   exps = exps.filter(e =>
@@ -194,7 +194,7 @@ function filterTable() {
 
 function exportCSV() {
   const user = getCurrentUser();
-  const exps = state.role === 'ADMIN'
+  const exps = (state.role === 'ADMIN' || state.role === 'GERENTE')
     ? state.expenses
     : state.expenses.filter(e => e.email === user.email.toLowerCase());
   const headers = ['Fecha','Concepto','Categoría','Tipo Doc','N° Doc','Proveedor','Monto','Estado','Aprobador','Observaciones'];
