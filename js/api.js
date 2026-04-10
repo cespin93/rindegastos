@@ -144,6 +144,31 @@ async function uploadFile(file) {
 }
 
 // ─────────────────────────────────────────────
+//  CONFIG DEL SHEET (clave Gemini, etc.)
+// ─────────────────────────────────────────────
+let _geminiKeyCache = null;
+
+async function getGeminiKey() {
+  if (_geminiKeyCache) return _geminiKeyCache;
+  const rows = await sheetsGet('Config!A:B');
+  const row  = rows.find(r => r[0] === 'GEMINI_API_KEY');
+  _geminiKeyCache = row?.[1] || '';
+  return _geminiKeyCache;
+}
+
+async function setGeminiKey(key) {
+  // Busca si ya existe la fila
+  const rows = await sheetsGet('Config!A:B');
+  const idx  = rows.findIndex(r => r[0] === 'GEMINI_API_KEY');
+  if (idx >= 0) {
+    await sheetsBatchUpdate([{ range: `Config!B${idx + 1}`, values: [[key]] }]);
+  } else {
+    await sheetsAppend('Config', ['GEMINI_API_KEY', key]);
+  }
+  _geminiKeyCache = key;
+}
+
+// ─────────────────────────────────────────────
 //  GEMINI OCR API
 // ─────────────────────────────────────────────
 async function extractFromDocument(file) {
@@ -167,7 +192,7 @@ async function extractFromDocument(file) {
 }
 Si no puedes determinar algún campo con seguridad, usa null. Responde ÚNICAMENTE con el objeto JSON, sin texto adicional.`;
 
-  const geminiKey = localStorage.getItem('gemini_api_key') || CONFIG.GEMINI_API_KEY;
+  const geminiKey = await getGeminiKey();
   if (!geminiKey) throw new Error('Falta la clave Gemini. Configúrala en Administración → Configuración.');
 
   const res = await fetch(

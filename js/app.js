@@ -755,25 +755,32 @@ async function showAdminTab(tab) {
   if (tab === 'tab-config')     _loadGeminiKeyStatus();
 }
 
-function _loadGeminiKeyStatus() {
-  const saved = localStorage.getItem('gemini_api_key');
-  const input  = $('gemini-key-input');
+async function _loadGeminiKeyStatus() {
   const status = $('gemini-key-status');
-  if (saved) {
-    input.placeholder = '••••••••••••••••••••••••••••••••••••';
-    status.innerHTML  = '<span style="color:#16a34a">✅ Clave configurada en este navegador</span>';
+  if (!status) return;
+  status.innerHTML = '<span style="color:#6b7280">Verificando...</span>';
+  const key = await getGeminiKey();
+  if (key) {
+    status.innerHTML = '<span style="color:#16a34a">✅ Clave configurada — todos los usuarios pueden usar el autocompletar</span>';
   } else {
-    status.innerHTML  = '<span style="color:#d97706">⚠️ Sin clave configurada — el autocompletar con IA no funcionará</span>';
+    status.innerHTML = '<span style="color:#d97706">⚠️ Sin clave configurada — el autocompletar con IA no funcionará</span>';
   }
 }
 
-function saveGeminiKey() {
+async function saveGeminiKey() {
   const val = $('gemini-key-input').value.trim();
   if (!val) { toast('Ingresa una clave válida', 'error'); return; }
-  localStorage.setItem('gemini_api_key', val);
-  $('gemini-key-input').value = '';
-  _loadGeminiKeyStatus();
-  toast('Clave Gemini guardada correctamente', 'success');
+  loading(true);
+  try {
+    await setGeminiKey(val);
+    $('gemini-key-input').value = '';
+    await _loadGeminiKeyStatus();
+    toast('Clave Gemini guardada para todos los usuarios', 'success');
+  } catch (e) {
+    toast('Error al guardar: ' + e.message, 'error');
+  } finally {
+    loading(false);
+  }
 }
 
 const ALL_ROLES = ['RENDIDOR', 'APROBADOR', 'GERENTE', 'ADMIN'];
