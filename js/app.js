@@ -434,7 +434,10 @@ function _renderGerencia(exps) {
 async function navNewExpense() {
   $('expense-form').reset();
   $('file-preview').innerHTML = '';
-  window._receipts = [];
+  window._receipts      = [];
+  window._originalFiles = [];
+  const autofillBtn = $('autofill-btn-wrap');
+  if (autofillBtn) autofillBtn.style.display = 'none';
   _resetBulk();
   setExpenseMode('single');
   await _loadCategories();
@@ -443,7 +446,8 @@ async function navNewExpense() {
 }
 
 // ── Modo Individual ──
-window._receipts = [];
+window._receipts      = [];
+window._originalFiles = []; // archivos originales para OCR
 
 async function handleFiles(input) {
   const preview = $('file-preview');
@@ -455,12 +459,45 @@ async function handleFiles(input) {
     try {
       const uploaded = await uploadFile(file);
       window._receipts.push(uploaded);
+      window._originalFiles.push(file);
       item.className = 'file-item file-ok';
       item.innerHTML = `✅ ${file.name}`;
     } catch (e) {
       item.className = 'file-item file-error';
       item.innerHTML = `❌ ${file.name}: ${e.message}`;
     }
+  }
+  // Mostrar botón de autocompletar si hay al menos un archivo subido
+  const btn = $('autofill-btn-wrap');
+  if (btn) btn.style.display = window._originalFiles.length ? 'flex' : 'none';
+}
+
+async function autoFillFromReceipt() {
+  const file = window._originalFiles[0];
+  if (!file) { toast('Primero sube un archivo para autocompletar', 'info'); return; }
+
+  const btn = $('autofill-btn-wrap')?.querySelector('button');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analizando...'; }
+
+  try {
+    const data = await extractFromDocument(file);
+
+    if (data.docType) {
+      const sel = $('f-doctype');
+      const opts = ['BOLETA','FACTURA','BOUCHER','OTRO'];
+      const match = opts.find(o => o === data.docType.toUpperCase());
+      if (match) sel.value = match;
+    }
+    if (data.docNumber) $('f-docnum').value   = data.docNumber;
+    if (data.provider)  $('f-provider').value = data.provider;
+    if (data.total)     $('f-total').value    = Math.round(Number(data.total));
+    if (data.date)      $('f-date').value     = data.date;
+
+    toast('Datos extraídos correctamente — revisa y ajusta si es necesario', 'success');
+  } catch (e) {
+    toast('No se pudo extraer datos: ' + e.message, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✨ Autocompletar con IA'; }
   }
 }
 

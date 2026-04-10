@@ -144,6 +144,58 @@ async function uploadFile(file) {
 }
 
 // ─────────────────────────────────────────────
+//  GEMINI OCR API
+// ─────────────────────────────────────────────
+async function extractFromDocument(file) {
+  const toBase64 = f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(f);
+  });
+
+  const base64 = await toBase64(file);
+  const mime   = file.type || 'image/jpeg';
+
+  const prompt = `Analiza este documento (boleta, factura o comprobante de pago) y extrae los siguientes campos en formato JSON:
+{
+  "docType": "BOLETA | FACTURA | BOUCHER | OTRO",
+  "docNumber": "número del documento, folio o código",
+  "provider": "nombre del proveedor o empresa emisora",
+  "total": número total a pagar (solo el número, sin símbolo de moneda ni puntos de miles),
+  "date": "fecha del documento en formato YYYY-MM-DD"
+}
+Si no puedes determinar algún campo con seguridad, usa null. Responde ÚNICAMENTE con el objeto JSON, sin texto adicional.`;
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${CONFIG.GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mime, data: base64 } }
+          ]
+        }]
+      })
+    }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Error al analizar el documento con IA');
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No se pudo interpretar la respuesta de la IA');
+  return JSON.parse(match[0]);
+}
+
+// ─────────────────────────────────────────────
 //  GMAIL API
 // ─────────────────────────────────────────────
 async function sendReceipt(expense, toEmail) {
