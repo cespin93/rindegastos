@@ -261,7 +261,7 @@ function openBatchDetail(batchName) {
   const canAuth    = state.role === 'GERENTE'    || _isAdmin();
 
   $('bd-tbody').innerHTML = list.map(e => {
-    const isOwn = e.email === currentEmail;
+    const isOwn = e.email === currentEmail && state.role !== 'SUPERADMIN';
     let actionBtn = '';
     if (canApprove && e.status === 'PENDIENTE' && !isOwn) {
       actionBtn = `<button class="btn-primary" style="font-size:12px;padding:4px 10px"
@@ -354,13 +354,14 @@ function openDetail(rowIndex, context) {
     context === 'approvals' &&
     e.status === 'PENDIENTE' &&
     (state.role === 'APROBADOR' || _isAdmin()) &&
-    e.email !== user.email.toLowerCase();
+    (e.email !== user.email.toLowerCase() || state.role === 'SUPERADMIN');
 
   // Nivel 2: GERENTE/ADMIN puede autorizar APROBADO
   const canL2 =
     context === 'gerencia' &&
     e.status === 'APROBADO' &&
-    (state.role === 'GERENTE' || _isAdmin());
+    (state.role === 'GERENTE' || _isAdmin()) &&
+    (e.email !== user.email.toLowerCase() || state.role === 'SUPERADMIN');
 
   $('d-actions-l1').classList.toggle('hidden', !canL1);
   $('d-actions-l2').classList.toggle('hidden', !canL2);
@@ -374,7 +375,7 @@ async function doDecision(newStatus) {
   const e    = state.currentExpense;
   if (!e) return;
   const user = getCurrentUser();
-  if (e.email === user.email.toLowerCase()) {
+  if (e.email === user.email.toLowerCase() && state.role !== 'SUPERADMIN') {
     toast('No puedes aprobar tus propias rendiciones', 'error');
     return;
   }
