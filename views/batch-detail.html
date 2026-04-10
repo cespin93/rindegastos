@@ -1,0 +1,64 @@
+<div id="view-batch-detail" class="view hidden">
+  <div class="page-header" style="max-width:960px">
+    <div style="display:flex;align-items:center;gap:16px">
+      <button class="back-btn" onclick="goBack()">← Volver</button>
+      <div>
+        <h2 id="bd-name" class="page-title" style="margin:0"></h2>
+        <p id="bd-meta" style="margin:4px 0 0;font-size:13px;color:#6b7280"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;max-width:760px;margin-bottom:24px">
+    <div class="stat-card">
+      <div class="stat-label">N° de gastos</div>
+      <div id="bd-count" class="stat-value"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Monto total</div>
+      <div id="bd-total" class="stat-value"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Pendientes</div>
+      <div id="bd-pending" class="stat-value" style="color:#d97706"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Aprobados</div>
+      <div id="bd-approved" class="stat-value" style="color:#16a34a"></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Autorizados</div>
+      <div id="bd-authorized" class="stat-value" style="color:#7c3aed"></div>
+    </div>
+  </div>
+
+  <!-- Tabla de rendiciones del conjunto -->
+  <div class="table-card" style="max-width:960px">
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Concepto</th>
+            <th>Categoría</th>
+            <th>Tipo Doc</th>
+            <th>N° Doc</th>
+            <th>Proveedor</th>
+            <th>Monto</th>
+            <th>Estado</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="bd-tbody"></tbody>
+        <tfoot>
+          <tr style="background:#f9fafb;font-weight:700">
+            <td colspan="6" class="td" style="text-align:right;color:#374151">Total conjunto:</td>
+            <td id="bd-total-footer" class="td" style="font-size:16px;color:#1e40af"></td>
+            <td colspan="2" class="td"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>

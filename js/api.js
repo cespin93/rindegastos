@@ -46,7 +46,8 @@ function _rowToExpense(row, rowIndex) {
     approverEmail:(row[12] || '').toLowerCase(),
     docType:       row[13] || '',
     docNumber:     row[14] || '',
-    provider:      row[15] || ''
+    provider:      row[15] || '',
+    batchName:     row[16] || ''
   };
 }
 
@@ -64,9 +65,10 @@ function _expenseToRow(exp, userEmail) {
     '', '',                   // J Token, K TokenExpiry (vacíos)
     '',                       // L Observations
     exp.approverEmail || '',  // M ApproverEmail
-    exp.docType   || '',      // N DocumentType
-    exp.docNumber || '',      // O DocumentNumber
-    exp.provider  || ''       // P Provider
+    exp.docType    || '',     // N DocumentType
+    exp.docNumber  || '',     // O DocumentNumber
+    exp.provider   || '',     // P Provider
+    exp.batchName  || ''      // Q BatchName
   ];
 }
 

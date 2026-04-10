@@ -57,7 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 async function _loadViews() {
   const main = document.getElementById('main-content');
-  const views = ['dashboard', 'new-expense', 'detail', 'approvals', 'gerencia', 'contabilidad', 'admin'];
+  const views = ['dashboard', 'new-expense', 'detail', 'approvals', 'gerencia', 'contabilidad', 'admin', 'batch-detail'];
   // Detecta la base URL automáticamente (funciona en localhost Y en GitHub Pages)
   const base = document.querySelector('base')?.href || (location.href.replace(/\/[^/]*$/, '/'));
   for (const name of views) {
@@ -158,23 +158,128 @@ function _renderStats(exps) {
   $('stat-rejected').textContent = exps.filter(e => e.status === 'RECHAZADO').length;
 }
 
+function _batchStatus(exps) {
+  const ss = exps.map(e => e.status);
+  if (ss.every(s => s === 'AUTORIZADO')) return 'AUTORIZADO';
+  if (ss.every(s => s === 'APROBADO' || s === 'AUTORIZADO')) return 'APROBADO';
+  if (ss.every(s => s === 'RECHAZADO')) return 'RECHAZADO';
+  if (ss.every(s => s === 'PENDIENTE')) return 'PENDIENTE';
+  const done = ss.filter(s => s !== 'PENDIENTE').length;
+  return `${done}/${exps.length}`;
+}
+
 function _renderTable(exps) {
   const tbody = $('exp-tbody');
   if (!exps.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-row">No hay rendiciones registradas</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No hay rendiciones registradas</td></tr>';
     return;
   }
-  tbody.innerHTML = exps.map(e => `
-    <tr class="table-row" onclick="openDetail(${e.rowIndex},'dashboard')">
-      <td class="td">${fmtDate(e.fechaGasto)}</td>
-      <td class="td td-bold">${e.title}</td>
-      <td class="td td-muted">${e.category}</td>
-      <td class="td td-muted">${e.docType}</td>
-      <td class="td td-muted">${e.docNumber || '—'}</td>
-      <td class="td td-bold">${fmt(e.total)}</td>
-      <td class="td">${badge(e.status)}</td>
-      <td class="td td-muted">${e.approverEmail || '—'}</td>
-    </tr>`).join('');
+
+  // Separar individuales y agrupar por batch
+  const batches = {};
+  const singles = [];
+  for (const e of exps) {
+    if (e.batchName) {
+      (batches[e.batchName] = batches[e.batchName] || []).push(e);
+    } else {
+      singles.push(e);
+    }
+  }
+
+  const rows = [];
+
+  // Filas de batches
+  for (const [name, list] of Object.entries(batches)) {
+    const total  = list.reduce((s, e) => s + e.total, 0);
+    const status = _batchStatus(list);
+    const knownStatus = ['PENDIENTE','APROBADO','AUTORIZADO','RECHAZADO'].includes(status);
+    const statusCell = knownStatus
+      ? badge(status)
+      : `<span class="badge badge-gray">${status} revisados</span>`;
+    rows.push(`
+      <tr class="table-row" onclick="openBatchDetail('${name.replace(/'/g,"\\'")}')">
+        <td class="td">—</td>
+        <td class="td td-bold">
+          <span style="font-size:11px;background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:10px;margin-right:6px">CONJUNTO</span>
+          ${name}
+          <span style="font-size:12px;color:#6b7280;margin-left:4px">(${list.length} gastos)</span>
+        </td>
+        <td class="td td-muted">—</td>
+        <td class="td td-muted">—</td>
+        <td class="td td-muted">—</td>
+        <td class="td td-bold">${fmt(total)}</td>
+        <td class="td">${statusCell}</td>
+        <td class="td td-muted">—</td>
+      </tr>`);
+  }
+
+  // Filas individuales
+  for (const e of singles) {
+    rows.push(`
+      <tr class="table-row" onclick="openDetail(${e.rowIndex},'dashboard')">
+        <td class="td">${fmtDate(e.fechaGasto)}</td>
+        <td class="td td-bold">${e.title}</td>
+        <td class="td td-muted">${e.category}</td>
+        <td class="td td-muted">${e.docType}</td>
+        <td class="td td-muted">${e.docNumber || '—'}</td>
+        <td class="td td-bold">${fmt(e.total)}</td>
+        <td class="td">${badge(e.status)}</td>
+        <td class="td td-muted">${e.approverEmail || '—'}</td>
+      </tr>`);
+  }
+
+  tbody.innerHTML = rows.join('');
+}
+
+function openBatchDetail(batchName) {
+  const list = state.expenses.filter(e => e.batchName === batchName);
+  if (!list.length) return;
+
+  $('bd-name').textContent = batchName;
+  $('bd-meta').textContent = `Enviado por: ${list[0].email}`;
+
+  const total      = list.reduce((s, e) => s + e.total, 0);
+  const pending    = list.filter(e => e.status === 'PENDIENTE').length;
+  const approved   = list.filter(e => e.status === 'APROBADO').length;
+  const authorized = list.filter(e => e.status === 'AUTORIZADO').length;
+
+  $('bd-count').textContent       = list.length;
+  $('bd-total').textContent       = fmt(total);
+  $('bd-pending').textContent     = pending;
+  $('bd-approved').textContent    = approved;
+  $('bd-authorized').textContent  = authorized;
+  $('bd-total-footer').textContent = fmt(total);
+
+  const canApprove = state.role === 'APROBADOR' || state.role === 'ADMIN';
+  const canAuth    = state.role === 'GERENTE'    || state.role === 'ADMIN';
+
+  $('bd-tbody').innerHTML = list.map(e => {
+    let actionBtn = '';
+    if (canApprove && e.status === 'PENDIENTE') {
+      actionBtn = `<button class="btn-primary" style="font-size:12px;padding:4px 10px"
+                    onclick="openDetail(${e.rowIndex},'approvals')">Revisar</button>`;
+    } else if (canAuth && e.status === 'APROBADO') {
+      actionBtn = `<button class="btn-primary" style="font-size:12px;padding:4px 10px;background:#7c3aed"
+                    onclick="openDetail(${e.rowIndex},'gerencia')">Autorizar</button>`;
+    } else {
+      actionBtn = `<button class="btn-secondary" style="font-size:12px;padding:4px 10px"
+                    onclick="openDetail(${e.rowIndex},'dashboard')">Ver</button>`;
+    }
+    return `
+      <tr class="table-row">
+        <td class="td">${fmtDate(e.fechaGasto)}</td>
+        <td class="td td-bold">${e.title}</td>
+        <td class="td td-muted">${e.category}</td>
+        <td class="td td-muted">${e.docType}</td>
+        <td class="td td-muted">${e.docNumber || '—'}</td>
+        <td class="td td-muted">${e.provider || '—'}</td>
+        <td class="td td-bold">${fmt(e.total)}</td>
+        <td class="td">${badge(e.status)}</td>
+        <td class="td">${actionBtn}</td>
+      </tr>`;
+  }).join('');
+
+  showView('view-batch-detail');
 }
 
 function filterTable() {
@@ -438,6 +543,8 @@ async function navNewExpense() {
   window._originalFiles = [];
   const autofillBtn = $('autofill-btn-wrap');
   if (autofillBtn) autofillBtn.style.display = 'none';
+  const batchNameInput = $('bulk-batch-name');
+  if (batchNameInput) batchNameInput.value = '';
   _resetBulk();
   setExpenseMode('single');
   await _loadCategories();
@@ -693,6 +800,9 @@ async function submitBulk() {
     toast('Espera a que terminen de subir los archivos', 'info');
     return;
   }
+  const batchName = $('bulk-batch-name').value.trim();
+  if (!batchName) { toast('Ingresa un nombre para el conjunto', 'error'); return; }
+
   const rows = Array.from($('bulk-tbody').querySelectorAll('tr.bulk-row'));
   if (!rows.length) { toast('Agrega al menos una fila', 'error'); return; }
 
@@ -701,10 +811,8 @@ async function submitBulk() {
   const expenses = [];
 
   for (const row of rows) {
-    const inputs  = row.querySelectorAll('input, select');
-    const id      = parseInt(row.id.replace('bulk-row-', ''));
-    // inputs: [concepto, fecha, monto, categoria, docType, docNumber, proveedor]
-    // (el file input está dentro de la label, lo saltamos)
+    const inputs     = row.querySelectorAll('input, select');
+    const id         = parseInt(row.id.replace('bulk-row-', ''));
     const textInputs = Array.from(inputs).filter(i => i.type !== 'file');
     const [title, fechaGasto, total, category, docType, docNumber, provider] =
       textInputs.map(i => i.value.trim());
@@ -716,7 +824,7 @@ async function submitBulk() {
     expenses.push({
       title, fechaGasto, total: parseFloat(total),
       category, docType, docNumber, provider,
-      notes: '', approverEmail,
+      notes: '', approverEmail, batchName,
       receipts: window._bulkReceipts.get(id) || []
     });
   }
@@ -726,8 +834,8 @@ async function submitBulk() {
     for (const exp of expenses) {
       await addExpense(exp, userEmail);
     }
-    await addAudit('CREAR_MULTIPLE', userEmail, { count: expenses.length });
-    toast(`${expenses.length} rendiciones registradas exitosamente`, 'success');
+    await addAudit('CREAR_CONJUNTO', userEmail, { batchName, count: expenses.length });
+    toast(`Conjunto "${batchName}" registrado con ${expenses.length} rendiciones`, 'success');
     _resetBulk();
     await navDashboard();
   } catch (e) {

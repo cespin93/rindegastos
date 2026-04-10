@@ -102,15 +102,20 @@
   <div id="bulk-form" class="hidden">
     <div class="form-card" style="max-width:960px">
 
-      <!-- Aprobador compartido -->
-      <div style="display:flex;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap">
-        <div style="flex:1;min-width:220px">
-          <label for="bulk-approver">Aprobador (para todas las rendiciones)</label>
+      <!-- Nombre del conjunto + Aprobador -->
+      <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:20px;flex-wrap:wrap">
+        <div style="flex:2;min-width:240px">
+          <label for="bulk-batch-name">Nombre del conjunto *</label>
+          <input id="bulk-batch-name" type="text" class="input-field"
+                 placeholder="Ej: Rendición Fondo Fijo Marzo" required>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label for="bulk-approver">Aprobador</label>
           <select id="bulk-approver" class="input-field">
             <option value="">Sin asignar</option>
           </select>
         </div>
-        <button type="button" class="btn-primary" onclick="addBulkRow()" style="margin-top:20px">
+        <button type="button" class="btn-primary" onclick="addBulkRow()">
           + Agregar fila
         </button>
       </div>
