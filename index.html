@@ -49,18 +49,18 @@
       <button class="nav-btn" data-view="view-new-expense" onclick="navNewExpense()">
         ➕ Nueva Rendición
       </button>
-      <button class="nav-btn" data-role="APROBADOR,GERENTE,ADMIN" data-view="view-approvals" onclick="navApprovals()">
+      <button class="nav-btn" data-role="APROBADOR,GERENTE,ADMIN,SUPERADMIN" data-view="view-approvals" onclick="navApprovals()">
         ✅ Aprobaciones
         <span id="nav-approvals-count" style="margin-left:auto;font-size:11px;background:rgba(255,255,255,.2);padding:1px 7px;border-radius:10px"></span>
       </button>
-      <button class="nav-btn" data-role="GERENTE,ADMIN" data-view="view-gerencia" onclick="navGerencia()">
+      <button class="nav-btn" data-role="GERENTE,ADMIN,SUPERADMIN" data-view="view-gerencia" onclick="navGerencia()">
         🏛 Gerencia
         <span id="nav-gerencia-count" style="margin-left:auto;font-size:11px;background:rgba(255,255,255,.2);padding:1px 7px;border-radius:10px"></span>
       </button>
-      <button class="nav-btn" data-role="ADMIN" data-view="view-contabilidad" onclick="navContabilidad()">
+      <button class="nav-btn" data-role="ADMIN,SUPERADMIN" data-view="view-contabilidad" onclick="navContabilidad()">
         🧾 Contabilidad
       </button>
-      <button class="nav-btn" data-role="ADMIN" data-view="view-admin" onclick="navAdmin()">
+      <button class="nav-btn" data-role="ADMIN,SUPERADMIN" data-view="view-admin" onclick="navAdmin()">
         ⚙️ Administración
       </button>
     </nav>

@@ -100,9 +100,20 @@ async function getCategories() {
 }
 
 async function getUsers() {
-  const rows = await sheetsGet('Usuarios!A2:B');
+  const rows = await sheetsGet('Usuarios!A2:D');
   return rows
-    .map(r => ({ email: (r[0] || '').toLowerCase(), role: r[1] || 'RENDIDOR' }))
+    .map(r => {
+      const nombre   = r[2] || '';
+      const apellido = r[3] || '';
+      const email    = (r[0] || '').toLowerCase();
+      return {
+        email,
+        role:        r[1] || 'RENDIDOR',
+        nombre,
+        apellido,
+        displayName: (nombre || apellido) ? `${nombre} ${apellido}`.trim() : email
+      };
+    })
     .filter(u => u.email);
 }
 

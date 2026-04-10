@@ -11,6 +11,11 @@ const state = {
 
 // ─── Helpers DOM ──────────────────────────────
 const $ = id => document.getElementById(id);
+const _isAdmin = () => state.role === 'ADMIN' || state.role === 'SUPERADMIN';
+const _getUserName = email => {
+  const u = state.users.find(u => u.email === (email || '').toLowerCase());
+  return u?.displayName || email || '—';
+};
 
 function toast(msg, type = 'success') {
   const colors = { success: '#16a34a', error: '#dc2626', info: '#2563eb' };
@@ -109,13 +114,13 @@ async function _loadCategories() {
 
 async function _loadUsers() {
   state.users = await getUsers();
-  // Excluir al propio usuario de la lista de aprobadores
   const currentEmail = getCurrentUser()?.email?.toLowerCase();
   const approvers = state.users.filter(u =>
-    (u.role === 'APROBADOR' || u.role === 'ADMIN') && u.email !== currentEmail
+    (u.role === 'APROBADOR' || u.role === 'ADMIN' || u.role === 'SUPERADMIN') &&
+    u.email !== currentEmail
   );
-  _fillSelect('form-approver',  approvers.map(u => ({ val: u.email, label: u.email })), 'Sin aprobador asignado');
-  _fillSelect('bulk-approver',  approvers.map(u => ({ val: u.email, label: u.email })), 'Sin aprobador asignado');
+  _fillSelect('form-approver', approvers.map(u => ({ val: u.email, label: u.displayName })), 'Sin aprobador asignado');
+  _fillSelect('bulk-approver', approvers.map(u => ({ val: u.email, label: u.displayName })), 'Sin aprobador asignado');
 }
 
 function _fillSelect(id, items, placeholder) {
@@ -139,7 +144,7 @@ async function navDashboard() {
     showView('view-dashboard');
     const all = await getExpenses();
     _mergeExpenses(all);
-    const mine = (state.role === 'ADMIN' || state.role === 'GERENTE')
+    const mine = (_isAdmin() || state.role === 'GERENTE')
       ? all
       : all.filter(e => e.email === getCurrentUser().email.toLowerCase());
     _renderStats(mine);
@@ -225,7 +230,7 @@ function _renderTable(exps) {
         <td class="td td-muted">${e.docNumber || '—'}</td>
         <td class="td td-bold">${fmt(e.total)}</td>
         <td class="td">${badge(e.status)}</td>
-        <td class="td td-muted">${e.approverEmail || '—'}</td>
+        <td class="td td-muted">${_getUserName(e.approverEmail)}</td>
       </tr>`);
   }
 
@@ -287,7 +292,7 @@ function filterTable() {
   const q = $('search').value.toLowerCase();
   const s = $('filter-status').value;
   const user = getCurrentUser();
-  let exps = (state.role === 'ADMIN' || state.role === 'GERENTE')
+  let exps = (_isAdmin() || state.role === 'GERENTE')
     ? state.expenses
     : state.expenses.filter(e => e.email === user.email.toLowerCase());
   exps = exps.filter(e =>
@@ -300,7 +305,7 @@ function filterTable() {
 
 function exportCSV() {
   const user = getCurrentUser();
-  const exps = (state.role === 'ADMIN' || state.role === 'GERENTE')
+  const exps = (_isAdmin() || state.role === 'GERENTE')
     ? state.expenses
     : state.expenses.filter(e => e.email === user.email.toLowerCase());
   const headers = ['Fecha','Concepto','Categoría','Tipo Doc','N° Doc','Proveedor','Monto','Estado','Aprobador','Observaciones'];
@@ -333,7 +338,7 @@ function openDetail(rowIndex, context) {
   $('d-docnumber').textContent    = e.docNumber || '—';
   $('d-provider').textContent     = e.provider || '—';
   $('d-notes').textContent        = e.notes    || '—';
-  $('d-approver').textContent     = e.approverEmail || '—';
+  $('d-approver').textContent     = _getUserName(e.approverEmail);
   $('d-observations').textContent = e.observations  || '—';
 
   $('d-receipts').innerHTML = e.receipts?.length
@@ -346,14 +351,14 @@ function openDetail(rowIndex, context) {
   const canL1 =
     context === 'approvals' &&
     e.status === 'PENDIENTE' &&
-    (state.role === 'APROBADOR' || state.role === 'ADMIN') &&
+    (state.role === 'APROBADOR' || _isAdmin()) &&
     e.email !== user.email.toLowerCase();
 
   // Nivel 2: GERENTE/ADMIN puede autorizar APROBADO
   const canL2 =
     context === 'gerencia' &&
     e.status === 'APROBADO' &&
-    (state.role === 'GERENTE' || state.role === 'ADMIN');
+    (state.role === 'GERENTE' || _isAdmin());
 
   $('d-actions-l1').classList.toggle('hidden', !canL1);
   $('d-actions-l2').classList.toggle('hidden', !canL2);
@@ -433,7 +438,7 @@ async function navApprovals() {
     const user = getCurrentUser();
 
     let pending;
-    if (state.role === 'ADMIN') {
+    if (_isAdmin()) {
       // Admin ve todos los PENDIENTE
       pending = all.filter(e => e.status === 'PENDIENTE');
     } else if (state.role === 'GERENTE') {
@@ -521,7 +526,7 @@ function _renderGerencia(exps) {
         <div>
           <h3 class="approval-title">${e.title}</h3>
           <p class="approval-email">${e.email}
-            <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${e.approverEmail || '—'}</span>
+            <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${_getUserName(e.approverEmail)}</span>
           </p>
         </div>
         <span class="approval-amount">${fmt(e.total)}</span>
@@ -892,34 +897,48 @@ async function saveGeminiKey() {
   }
 }
 
-const ALL_ROLES = ['RENDIDOR', 'APROBADOR', 'GERENTE', 'ADMIN'];
+const ALL_ROLES = ['RENDIDOR', 'APROBADOR', 'GERENTE', 'ADMIN', 'SUPERADMIN'];
 
 async function _loadAdminUsers() {
   const users = await getUsers();
+  const isSuperAdmin = state.role === 'SUPERADMIN';
   $('users-tbody').innerHTML = users.length
-    ? users.map((u, i) => `
+    ? users.map((u, i) => {
+        const isSA       = u.role === 'SUPERADMIN';
+        const canEdit    = isSuperAdmin || !isSA;
+        const rolesOpts  = (isSuperAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'SUPERADMIN'))
+          .map(r => `<option ${u.role===r?'selected':''}>${r}</option>`).join('');
+        return `
         <tr class="table-row">
-          <td class="td">${u.email}</td>
+          <td class="td">${u.email}${isSA ? ' <span style="font-size:10px;background:#1e40af;color:#fff;padding:1px 6px;border-radius:8px">SUPERADMIN</span>' : ''}</td>
+          <td class="td">${u.nombre || '—'}</td>
+          <td class="td">${u.apellido || '—'}</td>
           <td class="td">
-            <select onchange="updateUserRole(${i+2}, this.value)" class="select-sm">
-              ${ALL_ROLES.map(r => `<option ${u.role===r?'selected':''}>${r}</option>`).join('')}
-            </select>
+            ${canEdit
+              ? `<select onchange="updateUserRole(${i+2}, this.value)" class="select-sm">${rolesOpts}</select>`
+              : `<span class="badge badge-gray">${u.role}</span>`}
           </td>
           <td class="td">
-            <button onclick="deleteUser(${i+2})" class="btn-danger-sm">Eliminar</button>
+            ${canEdit
+              ? `<button onclick="deleteUser(${i+2})" class="btn-danger-sm">Eliminar</button>`
+              : '—'}
           </td>
-        </tr>`).join('')
-    : '<tr><td colspan="3" class="empty-row">Sin usuarios registrados</td></tr>';
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="5" class="empty-row">Sin usuarios registrados</td></tr>';
 }
 
 async function addUser() {
-  const email = prompt('Email del nuevo usuario:')?.toLowerCase().trim();
+  const email    = prompt('Email del nuevo usuario:')?.toLowerCase().trim();
   if (!email) return;
-  const role = prompt('Rol (RENDIDOR / APROBADOR / GERENTE / ADMIN):', 'RENDIDOR')?.toUpperCase().trim();
-  if (!ALL_ROLES.includes(role)) { toast('Rol inválido', 'error'); return; }
+  const nombre   = prompt('Nombre:')?.trim() || '';
+  const apellido = prompt('Apellido:')?.trim() || '';
+  const rolesDisp = state.role === 'SUPERADMIN' ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'SUPERADMIN');
+  const role = prompt(`Rol (${rolesDisp.join(' / ')}):`, 'RENDIDOR')?.toUpperCase().trim();
+  if (!rolesDisp.includes(role)) { toast('Rol inválido', 'error'); return; }
   loading(true);
   try {
-    await sheetsAppend('Usuarios', [email, role]);
+    await sheetsAppend('Usuarios', [email, role, nombre, apellido]);
     state.users = await getUsers();
     await _loadAdminUsers();
     toast('Usuario agregado', 'success');
@@ -927,6 +946,9 @@ async function addUser() {
 }
 
 async function updateUserRole(rowIndex, role) {
+  if (role === 'SUPERADMIN' && state.role !== 'SUPERADMIN') {
+    toast('Solo un SUPERADMIN puede asignar ese rol', 'error'); return;
+  }
   loading(true);
   try {
     await sheetsBatchUpdate([{ range: `Usuarios!B${rowIndex}`, values: [[role]] }]);
@@ -939,7 +961,7 @@ async function deleteUser(rowIndex) {
   if (!confirm('¿Eliminar este usuario?')) return;
   loading(true);
   try {
-    await sheetsBatchUpdate([{ range: `Usuarios!A${rowIndex}:B${rowIndex}`, values: [['','']] }]);
+    await sheetsBatchUpdate([{ range: `Usuarios!A${rowIndex}:D${rowIndex}`, values: [['','','','']] }]);
     await _loadAdminUsers();
     toast('Usuario eliminado', 'success');
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
@@ -1055,7 +1077,7 @@ function _renderConta(exps) {
         <td class="td">${e.title}</td>
         <td class="td td-muted">${e.email}</td>
         <td class="td td-bold" style="color:#111827">${fmt(e.total)}</td>
-        <td class="td td-muted" style="font-size:12px">${e.approverEmail || '—'}</td>
+        <td class="td td-muted" style="font-size:12px">${_getUserName(e.approverEmail)}</td>
         <td class="td">
           ${e.receipts?.length
             ? e.receipts.map(r => `<a href="${r.url}" target="_blank" class="conta-file-link">📎</a>`).join(' ')
