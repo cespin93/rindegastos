@@ -106,6 +106,19 @@ async function getCostCenters() {
   return rows.map(r => r[0]).filter(Boolean);
 }
 
+async function _ensureSheet(title) {
+  try {
+    await fetchWithAuth(`${_BASE}:batchUpdate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        requests: [{ addSheet: { properties: { title } } }]
+      })
+    });
+  } catch (_) {
+    // La pestaña ya existe, ignorar el error
+  }
+}
+
 async function getFondoFijo() {
   const rows = await sheetsGet('FondoFijo!A2:B');
   return rows
@@ -114,6 +127,7 @@ async function getFondoFijo() {
 }
 
 async function setFondoFijo(email, monto) {
+  await _ensureSheet('FondoFijo');
   const rows = await sheetsGet('FondoFijo!A2:B');
   const idx  = rows.findIndex(r => (r[0] || '').toLowerCase() === email.toLowerCase());
   if (idx >= 0) {
