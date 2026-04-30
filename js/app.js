@@ -1293,70 +1293,59 @@ async function _loadAdminFondoFijo() {
   const [fondos, users] = await Promise.all([getFondoFijo(), getUsers()]);
   const tbody = $('fondo-fijo-tbody');
   if (!tbody) return;
-  if (!fondos.length) {
-    tbody.innerHTML = '<tr><td colspan="3" class="empty-row">Sin fondos fijos asignados</td></tr>';
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-row">Sin usuarios registrados</td></tr>';
     return;
   }
-  tbody.innerHTML = fondos.map((f, i) => {
-    const user = users.find(u => u.email === f.email);
-    const name = user?.displayName || f.email;
+  tbody.innerHTML = users.map(u => {
+    const fondo   = fondos.find(f => f.email === u.email);
+    const monto   = fondo ? fondo.monto : '';
+    const hasFondo = !!fondo;
     return `
       <tr class="table-row">
-        <td class="td">${name}<br><span style="font-size:11px;color:#6b7280">${f.email}</span></td>
-        <td class="td td-bold">${fmt(f.monto)}</td>
         <td class="td">
-          <button onclick="editFondoFijo('${f.email}',${f.monto})" class="btn-secondary" style="font-size:12px;margin-right:6px">Editar</button>
-          <button onclick="deleteFondoFijoAdmin(${i+2})" class="btn-danger-sm">Eliminar</button>
+          <div style="font-weight:600">${u.displayName || u.email}</div>
+          <div style="font-size:11px;color:#6b7280">${u.email}</div>
+        </td>
+        <td class="td td-muted">${u.role}</td>
+        <td class="td">
+          <input id="ff-input-${u.email.replace(/[@.]/g,'_')}"
+                 type="number" min="0" step="1000"
+                 value="${monto}"
+                 placeholder="Sin fondo"
+                 class="input-field" style="width:160px;margin:0">
+        </td>
+        <td class="td">
+          <button onclick="saveFondoFijo('${u.email}')"
+                  class="btn-primary" style="font-size:12px;padding:5px 14px">
+            Guardar
+          </button>
         </td>
       </tr>`;
   }).join('');
 }
 
-async function addFondoFijo() {
-  const users = await getUsers();
-  const rendidores = users.filter(u => u.role === 'RENDIDOR' || u.role === 'APROBADOR');
-  if (!rendidores.length) { toast('No hay usuarios RENDIDOR/APROBADOR', 'info'); return; }
-  const opts = rendidores.map(u => `${u.email} (${u.displayName})`).join('\n');
-  const emailInput = prompt(`Selecciona el email del usuario:\n\n${opts}`);
-  if (!emailInput) return;
-  const email = emailInput.toLowerCase().trim();
-  const user = users.find(u => u.email === email);
-  if (!user) { toast('Usuario no encontrado', 'error'); return; }
-  const montoStr = prompt(`Monto mensual para ${user.displayName || email} (CLP):`);
-  if (!montoStr) return;
-  const monto = parseFloat(montoStr.replace(/\./g, '').replace(',', '.'));
-  if (!monto || monto <= 0) { toast('Monto inválido', 'error'); return; }
+async function saveFondoFijo(email) {
+  const inputId = 'ff-input-' + email.replace(/[@.]/g, '_');
+  const val     = $( inputId)?.value.trim();
+  const monto   = parseFloat(val);
   loading(true);
   try {
-    await setFondoFijo(email, monto);
+    if (!val || monto <= 0) {
+      // Quitar fondo: buscar rowIndex en state.fondoFijo
+      const fondos = await getFondoFijo();
+      const idx    = fondos.findIndex(f => f.email === email);
+      if (idx >= 0) {
+        await deleteFondoFijo(idx + 2);
+        toast('Fondo fijo eliminado', 'success');
+      } else {
+        toast('Este usuario no tiene fondo asignado', 'info');
+      }
+    } else {
+      await setFondoFijo(email, monto);
+      toast(`Fondo de ${fmt(monto)}/mes guardado`, 'success');
+    }
     state.fondoFijo = await getFondoFijo();
-    await _loadAdminFondoFijo();
-    toast(`Fondo fijo de ${fmt(monto)}/mes asignado a ${user.displayName || email}`, 'success');
-  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
-}
-
-async function editFondoFijo(email, montoActual) {
-  const montoStr = prompt(`Nuevo monto mensual para ${email} (actual: ${fmt(montoActual)}):`);
-  if (!montoStr) return;
-  const monto = parseFloat(montoStr.replace(/\./g, '').replace(',', '.'));
-  if (!monto || monto <= 0) { toast('Monto inválido', 'error'); return; }
-  loading(true);
-  try {
-    await setFondoFijo(email, monto);
-    state.fondoFijo = await getFondoFijo();
-    await _loadAdminFondoFijo();
-    toast('Fondo fijo actualizado', 'success');
-  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
-}
-
-async function deleteFondoFijoAdmin(rowIndex) {
-  if (!confirm('¿Eliminar este fondo fijo?')) return;
-  loading(true);
-  try {
-    await deleteFondoFijo(rowIndex);
-    state.fondoFijo = await getFondoFijo();
-    await _loadAdminFondoFijo();
-    toast('Fondo fijo eliminado', 'success');
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
 }
 

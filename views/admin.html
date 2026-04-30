@@ -42,10 +42,9 @@
   <div id="tab-fondo-fijo" class="admin-tab hidden">
     <div class="admin-section-header">
       <span class="admin-section-title">Fondos Fijos por Usuario</span>
-      <button class="btn-primary" onclick="addFondoFijo()">+ Asignar fondo</button>
     </div>
     <p style="font-size:13px;color:#6b7280;margin:0 0 16px">
-      Define el monto mensual que cada usuario tiene disponible. Los usuarios verán su avance de gasto en el dashboard.
+      Ingresa el monto mensual de cada usuario. Deja en blanco o en 0 para no asignar fondo.
     </p>
     <div class="table-card">
       <div style="overflow-x:auto">
@@ -53,8 +52,9 @@
           <thead>
             <tr>
               <th>Usuario</th>
-              <th>Monto mensual</th>
-              <th>Acciones</th>
+              <th>Rol</th>
+              <th style="width:200px">Monto mensual (CLP)</th>
+              <th style="width:100px"></th>
             </tr>
           </thead>
           <tbody id="fondo-fijo-tbody"></tbody>
