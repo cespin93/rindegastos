@@ -87,7 +87,7 @@ async function onSignIn(user) {
       el.classList.toggle('hidden', !roles.includes(state.role));
     });
 
-    await Promise.all([_loadCategories(), _loadUsers()]);
+    await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers()]);
 
     $('login-screen').classList.add('hidden');
     $('app-screen').classList.remove('hidden');
@@ -110,6 +110,11 @@ async function onSignIn(user) {
 async function _loadCategories() {
   state.categories = await getCategories();
   _fillSelect('form-category', state.categories.map(c => ({ val: c, label: c })), '— Categoría —');
+}
+
+async function _loadCostCenters() {
+  state.costCenters = await getCostCenters();
+  _fillSelect('form-cost-center', state.costCenters.map(c => ({ val: c, label: c })), '— Centro de Costo —');
 }
 
 async function _loadUsers() {
@@ -723,8 +728,7 @@ async function navNewExpense() {
   if (batchNameInput) batchNameInput.value = '';
   _resetBulk();
   setExpenseMode('single');
-  await _loadCategories();
-  await _loadUsers();
+  await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers()]);
   showView('view-new-expense');
 }
 
@@ -833,6 +837,7 @@ async function submitExpense(ev) {
     provider:      f.provider.value.trim(),
     notes:         f.notes.value.trim(),
     approverEmail: f.approverEmail.value,
+    costCenter:    f.costCenter.value,
     receipts:      window._receipts || []
   };
   loading(true);
@@ -877,6 +882,10 @@ function _catOptions() {
   return state.categories.map(c => `<option>${c}</option>`).join('');
 }
 
+function _ccOptions() {
+  return (state.costCenters || []).map(c => `<option>${c}</option>`).join('');
+}
+
 function addBulkRow() {
   const id = window._bulkRowCount++;
   window._bulkReceipts.set(id, []);
@@ -902,6 +911,12 @@ function addBulkRow() {
       <select class="input-field-sm" required>
         <option value="">— Cat —</option>
         ${_catOptions()}
+      </select>
+    </td>
+    <td class="bulk-td">
+      <select class="input-field-sm">
+        <option value="">— C. Costo —</option>
+        ${_ccOptions()}
       </select>
     </td>
     <td class="bulk-td">
@@ -990,7 +1005,7 @@ async function submitBulk() {
     const inputs     = row.querySelectorAll('input, select');
     const id         = parseInt(row.id.replace('bulk-row-', ''));
     const textInputs = Array.from(inputs).filter(i => i.type !== 'file');
-    const [title, fechaGasto, total, category, docType, docNumber, provider] =
+    const [title, fechaGasto, total, category, costCenter, docType, docNumber, provider] =
       textInputs.map(i => i.value.trim());
 
     if (!title || !fechaGasto || !total || !category || !docType) {
@@ -999,7 +1014,7 @@ async function submitBulk() {
     }
     expenses.push({
       title, fechaGasto, total: parseFloat(total),
-      category, docType, docNumber, provider,
+      category, costCenter, docType, docNumber, provider,
       notes: '', approverEmail, batchName,
       receipts: window._bulkReceipts.get(id) || []
     });
@@ -1034,9 +1049,10 @@ async function showAdminTab(tab) {
   document.querySelectorAll('.admin-tab').forEach(t =>
     t.classList.toggle('hidden', t.id !== tab)
   );
-  if (tab === 'tab-users')      await _loadAdminUsers();
-  if (tab === 'tab-categories') await _loadAdminCats();
-  if (tab === 'tab-config')     _loadGeminiKeyStatus();
+  if (tab === 'tab-users')        await _loadAdminUsers();
+  if (tab === 'tab-categories')  await _loadAdminCats();
+  if (tab === 'tab-costcenters') await _loadAdminCostCenters();
+  if (tab === 'tab-config')      _loadGeminiKeyStatus();
 }
 
 async function _loadGeminiKeyStatus() {
@@ -1169,6 +1185,41 @@ async function deleteCategory(rowIndex) {
     state.categories = await getCategories();
     await _loadAdminCats();
     toast('Categoría eliminada', 'success');
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function _loadAdminCostCenters() {
+  const ccs = await getCostCenters();
+  $('cc-list').innerHTML = ccs.length
+    ? ccs.map((c, i) => `
+        <div class="cat-item">
+          <span>${c}</span>
+          <button onclick="deleteCostCenter(${i+2})" class="btn-danger-sm">Eliminar</button>
+        </div>`).join('')
+    : '<p class="text-muted" style="padding:16px">Sin centros de costo</p>';
+}
+
+async function addCostCenter() {
+  const name = prompt('Nuevo centro de costo:')?.trim();
+  if (!name) return;
+  loading(true);
+  try {
+    await sheetsAppend('CentrosCosto', [name]);
+    state.costCenters = await getCostCenters();
+    await _loadAdminCostCenters();
+    _fillSelect('form-cost-center', state.costCenters.map(c => ({ val: c, label: c })), '— Centro de Costo —');
+    toast('Centro de costo agregado', 'success');
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function deleteCostCenter(rowIndex) {
+  if (!confirm('¿Eliminar este centro de costo?')) return;
+  loading(true);
+  try {
+    await sheetsBatchUpdate([{ range: `CentrosCosto!A${rowIndex}`, values: [['']] }]);
+    state.costCenters = await getCostCenters();
+    await _loadAdminCostCenters();
+    toast('Centro de costo eliminado', 'success');
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
 }
 

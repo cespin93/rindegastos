@@ -6,6 +6,8 @@
             onclick="showAdminTab('tab-users')">Usuarios</button>
     <button class="admin-tab-btn" data-tab="tab-categories"
             onclick="showAdminTab('tab-categories')">Categorías</button>
+    <button class="admin-tab-btn" data-tab="tab-costcenters"
+            onclick="showAdminTab('tab-costcenters')">Centros de Costo</button>
     <button class="admin-tab-btn" data-tab="tab-config"
             onclick="showAdminTab('tab-config')">Configuración</button>
   </div>
@@ -49,6 +51,15 @@
       </div>
       <div id="gemini-key-status" style="margin-top:10px;font-size:13px"></div>
     </div>
+  </div>
+
+  <!-- Centros de Costo -->
+  <div id="tab-costcenters" class="admin-tab hidden">
+    <div class="admin-section-header">
+      <span class="admin-section-title">Centros de Costo</span>
+      <button class="btn-primary" onclick="addCostCenter()">+ Agregar centro</button>
+    </div>
+    <div id="cc-list"></div>
   </div>
 
   <!-- Categorías -->

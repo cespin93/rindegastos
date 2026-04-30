@@ -47,7 +47,8 @@ function _rowToExpense(row, rowIndex) {
     docType:       row[13] || '',
     docNumber:     row[14] || '',
     provider:      row[15] || '',
-    batchName:     row[16] || ''
+    batchName:     row[16] || '',
+    costCenter:    row[17] || ''
   };
 }
 
@@ -68,7 +69,8 @@ function _expenseToRow(exp, userEmail) {
     exp.docType    || '',     // N DocumentType
     exp.docNumber  || '',     // O DocumentNumber
     exp.provider   || '',     // P Provider
-    exp.batchName  || ''      // Q BatchName
+    exp.batchName  || '',     // Q BatchName
+    exp.costCenter || ''      // R CostCenter
   ];
 }
 
@@ -76,7 +78,7 @@ function _tryJson(str, def) { try { return JSON.parse(str); } catch { return def
 
 // ─── CRUD Gastos ─────────────────────────────
 async function getExpenses() {
-  const rows = await sheetsGet('Rendiciones!A2:Q');
+  const rows = await sheetsGet('Rendiciones!A2:R');
   return rows.map((r, i) => _rowToExpense(r, i + 2));
 }
 
@@ -96,6 +98,11 @@ async function updateExpenseStatus(rowIndex, status, observations, approverEmail
 // ─── Datos de referencia ──────────────────────
 async function getCategories() {
   const rows = await sheetsGet('Categorias!A2:A');
+  return rows.map(r => r[0]).filter(Boolean);
+}
+
+async function getCostCenters() {
+  const rows = await sheetsGet('CentrosCosto!A2:A');
   return rows.map(r => r[0]).filter(Boolean);
 }
 
