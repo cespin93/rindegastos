@@ -43,9 +43,12 @@
     <div class="admin-section-header">
       <span class="admin-section-title">Fondos Fijos por Usuario</span>
     </div>
-    <p style="font-size:13px;color:#6b7280;margin:0 0 16px">
-      Ingresa el monto mensual de cada usuario. Deja en blanco o en 0 para no asignar fondo.
-    </p>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <label style="font-size:13px;font-weight:600;color:#374151">Mes:</label>
+      <input id="ff-month-picker" type="month" class="input-field"
+             style="width:160px;margin:0" onchange="_loadAdminFondoFijo()">
+      <span style="font-size:12px;color:#6b7280">Deja en blanco o 0 para quitar el fondo de ese mes.</span>
+    </div>
     <div class="table-card">
       <div style="overflow-x:auto">
         <table>

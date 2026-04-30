@@ -167,7 +167,9 @@ function _renderFondoFijo(exps) {
   if (!card) return;
 
   const email  = getCurrentUser()?.email?.toLowerCase();
-  const fondo  = (state.fondoFijo || []).find(f => f.email === email);
+  const now    = new Date();
+  const mes    = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const fondo  = (state.fondoFijo || []).find(f => f.email === email && f.month === mes);
 
   if (!fondo || _isAdmin() || state.role === 'GERENTE') {
     card.classList.add('hidden');
@@ -175,8 +177,6 @@ function _renderFondoFijo(exps) {
   }
 
   // Gastos del mes en curso (no rechazados)
-  const now   = new Date();
-  const mes   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const gastado = exps
     .filter(e => e.fechaGasto.startsWith(mes) && e.status !== 'RECHAZADO')
     .reduce((s, e) => s + e.total, 0);
@@ -1290,6 +1290,14 @@ async function deleteCostCenter(rowIndex) {
 }
 
 async function _loadAdminFondoFijo() {
+  const picker = $('ff-month-picker');
+  if (!picker) return;
+  if (!picker.value) {
+    const now = new Date();
+    picker.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+  const selectedMonth = picker.value;
+
   const [fondos, users] = await Promise.all([getFondoFijo(), getUsers()]);
   const tbody = $('fondo-fijo-tbody');
   if (!tbody) return;
@@ -1298,9 +1306,8 @@ async function _loadAdminFondoFijo() {
     return;
   }
   tbody.innerHTML = users.map(u => {
-    const fondo   = fondos.find(f => f.email === u.email);
-    const monto   = fondo ? fondo.monto : '';
-    const hasFondo = !!fondo;
+    const fondo = fondos.find(f => f.email === u.email && f.month === selectedMonth);
+    const monto = fondo ? fondo.monto : '';
     return `
       <tr class="table-row">
         <td class="td">
@@ -1326,24 +1333,25 @@ async function _loadAdminFondoFijo() {
 }
 
 async function saveFondoFijo(email) {
+  const month = $('ff-month-picker')?.value;
+  if (!month) { toast('Selecciona un mes', 'error'); return; }
   const inputId = 'ff-input-' + email.replace(/[@.]/g, '_');
-  const val     = $( inputId)?.value.trim();
+  const val     = $(inputId)?.value.trim();
   const monto   = parseFloat(val);
   loading(true);
   try {
     if (!val || monto <= 0) {
-      // Quitar fondo: buscar rowIndex en state.fondoFijo
       const fondos = await getFondoFijo();
-      const idx    = fondos.findIndex(f => f.email === email);
-      if (idx >= 0) {
-        await deleteFondoFijo(idx + 2);
+      const found  = fondos.find(f => f.email === email && f.month === month);
+      if (found) {
+        await deleteFondoFijo(found.rowIndex);
         toast('Fondo fijo eliminado', 'success');
       } else {
-        toast('Este usuario no tiene fondo asignado', 'info');
+        toast('Este usuario no tiene fondo asignado para este mes', 'info');
       }
     } else {
-      await setFondoFijo(email, monto);
-      toast(`Fondo de ${fmt(monto)}/mes guardado`, 'success');
+      await setFondoFijo(email, month, monto);
+      toast(`Fondo de ${fmt(monto)} guardado para ${month}`, 'success');
     }
     state.fondoFijo = await getFondoFijo();
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }

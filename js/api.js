@@ -120,27 +120,32 @@ async function _ensureSheet(title) {
 }
 
 async function getFondoFijo() {
-  const rows = await sheetsGet('FondoFijo!A2:B');
+  const rows = await sheetsGet('FondoFijo!A2:C');
   return rows
-    .map(r => ({ email: (r[0] || '').toLowerCase(), monto: parseFloat(r[1]) || 0 }))
-    .filter(r => r.email);
+    .map((r, i) => ({
+      rowIndex: i + 2,
+      email:    (r[0] || '').toLowerCase(),
+      month:    r[1] || '',
+      monto:    parseFloat(r[2]) || 0
+    }))
+    .filter(r => r.email && r.month);
 }
 
-async function setFondoFijo(email, monto) {
+async function setFondoFijo(email, month, monto) {
   await _ensureSheet('FondoFijo');
-  const rows = await sheetsGet('FondoFijo!A2:B');
-  const idx  = rows.findIndex(r => (r[0] || '').toLowerCase() === email.toLowerCase());
-  if (idx >= 0) {
+  const rows = await getFondoFijo();
+  const found = rows.find(r => r.email === email.toLowerCase() && r.month === month);
+  if (found) {
     await sheetsBatchUpdate([
-      { range: `FondoFijo!A${idx + 2}:B${idx + 2}`, values: [[email, monto]] }
+      { range: `FondoFijo!A${found.rowIndex}:C${found.rowIndex}`, values: [[email, month, monto]] }
     ]);
   } else {
-    await sheetsAppend('FondoFijo', [email, monto]);
+    await sheetsAppend('FondoFijo', [email, month, monto]);
   }
 }
 
 async function deleteFondoFijo(rowIndex) {
-  await sheetsBatchUpdate([{ range: `FondoFijo!A${rowIndex}:B${rowIndex}`, values: [['', '']] }]);
+  await sheetsBatchUpdate([{ range: `FondoFijo!A${rowIndex}:C${rowIndex}`, values: [['', '', '']] }]);
 }
 
 async function getUsers() {
