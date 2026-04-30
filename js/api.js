@@ -106,6 +106,29 @@ async function getCostCenters() {
   return rows.map(r => r[0]).filter(Boolean);
 }
 
+async function getFondoFijo() {
+  const rows = await sheetsGet('FondoFijo!A2:B');
+  return rows
+    .map(r => ({ email: (r[0] || '').toLowerCase(), monto: parseFloat(r[1]) || 0 }))
+    .filter(r => r.email);
+}
+
+async function setFondoFijo(email, monto) {
+  const rows = await sheetsGet('FondoFijo!A2:B');
+  const idx  = rows.findIndex(r => (r[0] || '').toLowerCase() === email.toLowerCase());
+  if (idx >= 0) {
+    await sheetsBatchUpdate([
+      { range: `FondoFijo!A${idx + 2}:B${idx + 2}`, values: [[email, monto]] }
+    ]);
+  } else {
+    await sheetsAppend('FondoFijo', [email, monto]);
+  }
+}
+
+async function deleteFondoFijo(rowIndex) {
+  await sheetsBatchUpdate([{ range: `FondoFijo!A${rowIndex}:B${rowIndex}`, values: [['', '']] }]);
+}
+
 async function getUsers() {
   const rows = await sheetsGet('Usuarios!A2:D');
   return rows

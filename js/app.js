@@ -87,7 +87,7 @@ async function onSignIn(user) {
       el.classList.toggle('hidden', !roles.includes(state.role));
     });
 
-    await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers()]);
+    await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers(), _loadFondoFijo()]);
 
     $('login-screen').classList.add('hidden');
     $('app-screen').classList.remove('hidden');
@@ -115,6 +115,10 @@ async function _loadCategories() {
 async function _loadCostCenters() {
   state.costCenters = await getCostCenters();
   _fillSelect('form-cost-center', state.costCenters.map(c => ({ val: c, label: c })), '— Centro de Costo —');
+}
+
+async function _loadFondoFijo() {
+  state.fondoFijo = await getFondoFijo();
 }
 
 async function _loadUsers() {
@@ -153,8 +157,69 @@ async function navDashboard() {
       ? all
       : all.filter(e => e.email === getCurrentUser().email.toLowerCase());
     _renderStats(mine);
+    _renderFondoFijo(mine);
     _renderTable(mine);
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+function _renderFondoFijo(exps) {
+  const card = $('fondo-fijo-card');
+  if (!card) return;
+
+  const email  = getCurrentUser()?.email?.toLowerCase();
+  const fondo  = (state.fondoFijo || []).find(f => f.email === email);
+
+  if (!fondo || _isAdmin() || state.role === 'GERENTE') {
+    card.classList.add('hidden');
+    return;
+  }
+
+  // Gastos del mes en curso (no rechazados)
+  const now   = new Date();
+  const mes   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const gastado = exps
+    .filter(e => e.fechaGasto.startsWith(mes) && e.status !== 'RECHAZADO')
+    .reduce((s, e) => s + e.total, 0);
+
+  const saldo     = fondo.monto - gastado;
+  const excedente = saldo < 0;
+  const mesLabel  = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
+
+  card.classList.remove('hidden');
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
+      <div>
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
+                    color:#1e40af;margin-bottom:4px">Fondo Fijo — ${mesLabel}</div>
+        <div style="display:flex;gap:32px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11px;color:#6b7280">Asignado</div>
+            <div style="font-size:20px;font-weight:700;color:#374151">${fmt(fondo.monto)}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#6b7280">Gastado este mes</div>
+            <div style="font-size:20px;font-weight:700;color:#374151">${fmt(gastado)}</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#6b7280">${excedente ? 'Excedente' : 'Disponible'}</div>
+            <div style="font-size:22px;font-weight:800;color:${excedente ? '#dc2626' : '#16a34a'}">
+              ${excedente ? '-' : ''}${fmt(Math.abs(saldo))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="width:160px">
+        <div style="font-size:11px;color:#6b7280;margin-bottom:4px">Uso del fondo</div>
+        <div style="background:#e5e7eb;border-radius:99px;height:10px;overflow:hidden">
+          <div style="height:100%;border-radius:99px;width:${Math.min((gastado/fondo.monto)*100,100)}%;
+                      background:${excedente ? '#dc2626' : gastado/fondo.monto > 0.8 ? '#d97706' : '#16a34a'};
+                      transition:width .3s"></div>
+        </div>
+        <div style="font-size:11px;color:#6b7280;margin-top:4px;text-align:right">
+          ${Math.round((gastado/fondo.monto)*100)}% utilizado
+        </div>
+      </div>
+    </div>`;
 }
 
 function _renderStats(exps) {
@@ -1052,6 +1117,7 @@ async function showAdminTab(tab) {
   if (tab === 'tab-users')        await _loadAdminUsers();
   if (tab === 'tab-categories')  await _loadAdminCats();
   if (tab === 'tab-costcenters') await _loadAdminCostCenters();
+  if (tab === 'tab-fondo-fijo')  await _loadAdminFondoFijo();
   if (tab === 'tab-config')      _loadGeminiKeyStatus();
 }
 
@@ -1220,6 +1286,77 @@ async function deleteCostCenter(rowIndex) {
     state.costCenters = await getCostCenters();
     await _loadAdminCostCenters();
     toast('Centro de costo eliminado', 'success');
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function _loadAdminFondoFijo() {
+  const [fondos, users] = await Promise.all([getFondoFijo(), getUsers()]);
+  const tbody = $('fondo-fijo-tbody');
+  if (!tbody) return;
+  if (!fondos.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-row">Sin fondos fijos asignados</td></tr>';
+    return;
+  }
+  tbody.innerHTML = fondos.map((f, i) => {
+    const user = users.find(u => u.email === f.email);
+    const name = user?.displayName || f.email;
+    return `
+      <tr class="table-row">
+        <td class="td">${name}<br><span style="font-size:11px;color:#6b7280">${f.email}</span></td>
+        <td class="td td-bold">${fmt(f.monto)}</td>
+        <td class="td">
+          <button onclick="editFondoFijo('${f.email}',${f.monto})" class="btn-secondary" style="font-size:12px;margin-right:6px">Editar</button>
+          <button onclick="deleteFondoFijoAdmin(${i+2})" class="btn-danger-sm">Eliminar</button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+async function addFondoFijo() {
+  const users = await getUsers();
+  const rendidores = users.filter(u => u.role === 'RENDIDOR' || u.role === 'APROBADOR');
+  if (!rendidores.length) { toast('No hay usuarios RENDIDOR/APROBADOR', 'info'); return; }
+  const opts = rendidores.map(u => `${u.email} (${u.displayName})`).join('\n');
+  const emailInput = prompt(`Selecciona el email del usuario:\n\n${opts}`);
+  if (!emailInput) return;
+  const email = emailInput.toLowerCase().trim();
+  const user = users.find(u => u.email === email);
+  if (!user) { toast('Usuario no encontrado', 'error'); return; }
+  const montoStr = prompt(`Monto mensual para ${user.displayName || email} (CLP):`);
+  if (!montoStr) return;
+  const monto = parseFloat(montoStr.replace(/\./g, '').replace(',', '.'));
+  if (!monto || monto <= 0) { toast('Monto inválido', 'error'); return; }
+  loading(true);
+  try {
+    await setFondoFijo(email, monto);
+    state.fondoFijo = await getFondoFijo();
+    await _loadAdminFondoFijo();
+    toast(`Fondo fijo de ${fmt(monto)}/mes asignado a ${user.displayName || email}`, 'success');
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function editFondoFijo(email, montoActual) {
+  const montoStr = prompt(`Nuevo monto mensual para ${email} (actual: ${fmt(montoActual)}):`);
+  if (!montoStr) return;
+  const monto = parseFloat(montoStr.replace(/\./g, '').replace(',', '.'));
+  if (!monto || monto <= 0) { toast('Monto inválido', 'error'); return; }
+  loading(true);
+  try {
+    await setFondoFijo(email, monto);
+    state.fondoFijo = await getFondoFijo();
+    await _loadAdminFondoFijo();
+    toast('Fondo fijo actualizado', 'success');
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function deleteFondoFijoAdmin(rowIndex) {
+  if (!confirm('¿Eliminar este fondo fijo?')) return;
+  loading(true);
+  try {
+    await deleteFondoFijo(rowIndex);
+    state.fondoFijo = await getFondoFijo();
+    await _loadAdminFondoFijo();
+    toast('Fondo fijo eliminado', 'success');
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
 }
 

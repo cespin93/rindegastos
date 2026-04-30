@@ -8,6 +8,8 @@
             onclick="showAdminTab('tab-categories')">Categorías</button>
     <button class="admin-tab-btn" data-tab="tab-costcenters"
             onclick="showAdminTab('tab-costcenters')">Centros de Costo</button>
+    <button class="admin-tab-btn" data-tab="tab-fondo-fijo"
+            onclick="showAdminTab('tab-fondo-fijo')">Fondo Fijo</button>
     <button class="admin-tab-btn" data-tab="tab-config"
             onclick="showAdminTab('tab-config')">Configuración</button>
   </div>
@@ -31,6 +33,31 @@
             </tr>
           </thead>
           <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fondo Fijo -->
+  <div id="tab-fondo-fijo" class="admin-tab hidden">
+    <div class="admin-section-header">
+      <span class="admin-section-title">Fondos Fijos por Usuario</span>
+      <button class="btn-primary" onclick="addFondoFijo()">+ Asignar fondo</button>
+    </div>
+    <p style="font-size:13px;color:#6b7280;margin:0 0 16px">
+      Define el monto mensual que cada usuario tiene disponible. Los usuarios verán su avance de gasto en el dashboard.
+    </p>
+    <div class="table-card">
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Monto mensual</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="fondo-fijo-tbody"></tbody>
         </table>
       </div>
     </div>
