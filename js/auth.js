@@ -52,13 +52,12 @@ async function callBackend(action, params = {}, requireAuth = true) {
   const body = { action, params };
   if (requireAuth) body.token = _sessionToken;
 
+  // GET request: evita el problema CORS del redirect de Apps Script
+  const url = CONFIG.APPS_SCRIPT_URL + '?d=' + encodeURIComponent(JSON.stringify(body));
+
   let res;
   try {
-    res = await fetch(CONFIG.APPS_SCRIPT_URL, {
-      method: 'POST',
-      body:   JSON.stringify(body)
-      // Sin Content-Type header → evita preflight CORS
-    });
+    res = await fetch(url);
   } catch (netErr) {
     throw new Error('Error de red. Verifica tu conexión a internet.');
   }

@@ -9,33 +9,53 @@ var SHEET_ID        = '1YCr7t4W0WMMRa4e_jS8vN4K8QNGrqYhgXxjakL4YJPU';
 var DRIVE_FOLDER_ID = '1F6BHuiP1p1d2-4Kil09VnNxYnF0SpaTn';
 var TOKEN_SECRET    = 'RGmymgroup2024secret'; // Cámbialo por algo único y secreto
 
-// ─── Entry point ──────────────────────────────────────────────────────────────
+// ─── Entry points ─────────────────────────────────────────────────────────────
 
-function doPost(e) {
+/* GET: usado para todas las llamadas normales (evita CORS con redirect) */
+function doGet(e) {
   var output;
   try {
-    var body   = JSON.parse(e.postData.contents);
-    var action = body.action;
-    var token  = body.token;
-    var params = body.params || {};
-
-    if (action === 'login') {
-      output = _handleLogin(params.email, params.password);
-    } else {
-      var user = _validateToken(token);
-      if (!user) {
-        output = { error: 'Sesión inválida o expirada. Inicia sesión nuevamente.' };
-      } else {
-        output = _dispatch(action, params, user);
-      }
+    var raw  = e.parameter.d;
+    if (!raw) { output = { error: 'Sin payload' }; }
+    else {
+      var body = JSON.parse(decodeURIComponent(raw));
+      output   = _handleBody(body);
     }
   } catch (err) {
     output = { error: err.toString() };
   }
-
   return ContentService
     .createTextOutput(JSON.stringify(output))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* POST: usado solo para subida de archivos (payload demasiado grande para URL) */
+function doPost(e) {
+  var output;
+  try {
+    var body = JSON.parse(e.postData.contents);
+    output   = _handleBody(body);
+  } catch (err) {
+    output = { error: err.toString() };
+  }
+  return ContentService
+    .createTextOutput(JSON.stringify(output))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function _handleBody(body) {
+  var action = body.action;
+  var token  = body.token;
+  var params = body.params || {};
+
+  if (action === 'login') {
+    return _handleLogin(params.email, params.password);
+  }
+  var user = _validateToken(token);
+  if (!user) {
+    return { error: 'Sesión inválida o expirada. Inicia sesión nuevamente.' };
+  }
+  return _dispatch(action, params, user);
 }
 
 // ─── Dispatch ─────────────────────────────────────────────────────────────────

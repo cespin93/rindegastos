@@ -174,7 +174,21 @@ async function uploadFile(file) {
 
   const base64 = await toBase64(file);
   const mime   = file.type || 'application/octet-stream';
-  return callBackend('uploadFile', { name: file.name, data: base64, mime });
+
+  // Usa POST para el archivo (payload muy grande para URL)
+  const body = {
+    action: 'uploadFile',
+    token:  getSessionToken(),
+    params: { name: file.name, data: base64, mime }
+  };
+  const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: 'POST',
+    body:   JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error('Error al subir archivo (' + res.status + ')');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 // ─────────────────────────────────────────────
