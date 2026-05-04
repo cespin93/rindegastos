@@ -34,7 +34,11 @@ nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2p
   padding: 14px 16px; border-top: 1px solid rgba(255,255,255,.12);
 }
 .sidebar-user-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-#user-avatar { width: 34px; height: 34px; border-radius: 50%; background: #3b82f6; object-fit: cover; }
+#user-avatar {
+  width: 34px; height: 34px; border-radius: 50%; background: #3b82f6;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 15px; font-weight: 700; flex-shrink: 0;
+}
 #user-name  { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #user-email { font-size: 11px; color: rgba(255,255,255,.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn-signout {
@@ -76,13 +80,24 @@ nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2p
 }
 .login-title { font-size: 26px; font-weight: 700; color: #111827; margin-bottom: 6px; }
 .login-sub   { font-size: 14px; color: #6b7280; margin-bottom: 32px; }
-.btn-google {
-  width: 100%; padding: 14px; border-radius: 12px;
-  background: #2563eb; color: #fff; font-size: 15px; font-weight: 600;
-  border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
-  gap: 10px; transition: background .2s;
+.login-input {
+  width: 100%; padding: 13px 16px; border-radius: 10px; margin-bottom: 12px;
+  border: 1.5px solid #e5e7eb; font-size: 15px; color: #111827;
+  outline: none; transition: border-color .2s; display: block; box-sizing: border-box;
 }
-.btn-google:hover { background: #1d4ed8; }
+.login-input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+.btn-ingresar {
+  width: 100%; padding: 14px; border-radius: 12px; margin-top: 4px;
+  background: #2563eb; color: #fff; font-size: 15px; font-weight: 600;
+  border: none; cursor: pointer; transition: background .2s;
+}
+.btn-ingresar:hover    { background: #1d4ed8; }
+.btn-ingresar:disabled { background: #93c5fd; cursor: not-allowed; }
+.login-error {
+  margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+  background: #fef2f2; color: #dc2626; font-size: 13px;
+  border: 1px solid #fecaca; text-align: left;
+}
 
 /* ── Vistas ── */
 .view { padding: 28px 32px; }

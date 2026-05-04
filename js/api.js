@@ -1,31 +1,23 @@
 // ─────────────────────────────────────────────
-//  SHEETS API
+//  SHEETS via Apps Script
 // ─────────────────────────────────────────────
-const _BASE = 'https://sheets.googleapis.com/v4/spreadsheets/' + CONFIG.SHEET_ID;
 
 async function sheetsGet(range) {
   try {
-    const d = await fetchWithAuth(`${_BASE}/values/${encodeURIComponent(range)}`);
+    const d = await callBackend('sheetsRead', { range });
     return d.values || [];
   } catch (e) {
-    // Si la pestaña no existe en el Sheet, devuelve vacío en vez de romper
     console.warn('[Rindegastos] sheetsGet falló para:', range, '→', e.message);
     return [];
   }
 }
 
 async function sheetsAppend(sheet, row) {
-  return fetchWithAuth(
-    `${_BASE}/values/${encodeURIComponent(sheet + '!A:Z')}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`,
-    { method: 'POST', body: JSON.stringify({ values: [row] }) }
-  );
+  return callBackend('sheetsAppend', { sheet, row });
 }
 
 async function sheetsBatchUpdate(data) {
-  return fetchWithAuth(`${_BASE}/values:batchUpdate`, {
-    method: 'POST',
-    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data })
-  });
+  return callBackend('sheetsBatchUpdate', { data });
 }
 
 // ─── Mapeo fila ↔ objeto ─────────────────────
@@ -41,7 +33,6 @@ function _rowToExpense(row, rowIndex) {
     receipts:      _tryJson(row[6], []),
     notes:         row[7]  || '',
     status:        row[8]  || 'PENDIENTE',
-    // row[9]=token, row[10]=tokenExpiry (legado, no se usan)
     observations:  row[11] || '',
     approverEmail:(row[12] || '').toLowerCase(),
     docType:       row[13] || '',
@@ -87,7 +78,7 @@ async function addExpense(exp, userEmail) {
 }
 
 async function updateExpenseStatus(rowIndex, status, observations, approverEmail) {
-  const col = n => String.fromCharCode(64 + n); // 9→I, 12→L, 13→M
+  const col = n => String.fromCharCode(64 + n);
   return sheetsBatchUpdate([
     { range: `Rendiciones!${col(9)}${rowIndex}`,  values: [[status]] },
     { range: `Rendiciones!${col(12)}${rowIndex}`, values: [[observations]] },
@@ -108,15 +99,8 @@ async function getCostCenters() {
 
 async function _ensureSheet(title) {
   try {
-    await fetchWithAuth(`${_BASE}:batchUpdate`, {
-      method: 'POST',
-      body: JSON.stringify({
-        requests: [{ addSheet: { properties: { title } } }]
-      })
-    });
-  } catch (_) {
-    // La pestaña ya existe, ignorar el error
-  }
+    await callBackend('addSheet', { title });
+  } catch (_) {}
 }
 
 async function getFondoFijo() {
@@ -133,7 +117,7 @@ async function getFondoFijo() {
 
 async function setFondoFijo(email, month, monto) {
   await _ensureSheet('FondoFijo');
-  const rows = await getFondoFijo();
+  const rows  = await getFondoFijo();
   const found = rows.find(r => r.email === email.toLowerCase() && r.month === month);
   if (found) {
     await sheetsBatchUpdate([
@@ -149,6 +133,7 @@ async function deleteFondoFijo(rowIndex) {
 }
 
 async function getUsers() {
+  // Solo columnas A-D: email, rol, nombre, apellido (sin contraseña)
   const rows = await sheetsGet('Usuarios!A2:D');
   return rows
     .map(r => {
@@ -177,32 +162,19 @@ async function addAudit(action, userEmail, details) {
 }
 
 // ─────────────────────────────────────────────
-//  DRIVE API
+//  DRIVE via Apps Script (envía el archivo en base64)
 // ─────────────────────────────────────────────
 async function uploadFile(file) {
-  const meta = { name: file.name, parents: [CONFIG.DRIVE_FOLDER_ID] };
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
-  form.append('file', file);
-
-  const res = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,mimeType',
-    { method: 'POST', headers: { Authorization: 'Bearer ' + getAccessToken() }, body: form }
-  );
-  if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e.error?.message || 'Error al subir archivo');
-  }
-  const data = await res.json();
-
-  // Hacer el archivo viewable por cualquiera con el link
-  await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + getAccessToken(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'anyone', role: 'reader' })
+  const toBase64 = f => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload  = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(f);
   });
 
-  return { id: data.id, name: data.name, url: data.webViewLink, mime: data.mimeType };
+  const base64 = await toBase64(file);
+  const mime   = file.type || 'application/octet-stream';
+  return callBackend('uploadFile', { name: file.name, data: base64, mime });
 }
 
 // ─────────────────────────────────────────────
@@ -219,7 +191,6 @@ async function getGeminiKey() {
 }
 
 async function setGeminiKey(key) {
-  // Busca si ya existe la fila
   const rows = await sheetsGet('Config!A:B');
   const idx  = rows.findIndex(r => r[0] === 'GEMINI_API_KEY');
   if (idx >= 0) {
@@ -231,7 +202,7 @@ async function setGeminiKey(key) {
 }
 
 // ─────────────────────────────────────────────
-//  GEMINI OCR API
+//  GEMINI OCR API (llamada directa, no pasa por Apps Script)
 // ─────────────────────────────────────────────
 async function extractFromDocument(file) {
   const toBase64 = f => new Promise((res, rej) => {
@@ -278,15 +249,15 @@ Si no puedes determinar algún campo con seguridad, usa null. Responde ÚNICAMEN
     throw new Error(err.error?.message || 'Error al analizar el documento con IA');
   }
 
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  const data  = await res.json();
+  const text  = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('No se pudo interpretar la respuesta de la IA');
   return JSON.parse(match[0]);
 }
 
 // ─────────────────────────────────────────────
-//  GMAIL API
+//  EMAIL via Apps Script
 // ─────────────────────────────────────────────
 async function sendReceipt(expense, toEmail) {
   const recipient = toEmail || CONFIG.RECEIPTS_EMAIL;
@@ -317,20 +288,9 @@ async function sendReceipt(expense, toEmail) {
   <p style="font-size:11px;color:#9ca3af;margin-top:12px">Rindegastos &bull; ${new Date().toLocaleString('es-CL')}</p>
 </div>`;
 
-  const raw = [
-    `To: ${recipient}`,
-    `Subject: [Rindegastos] ${expense.status} - ${expense.title}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/html; charset=UTF-8',
-    '',
-    html
-  ].join('\r\n');
-
-  const encoded = btoa(unescape(encodeURIComponent(raw)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-  return fetchWithAuth('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-    method: 'POST',
-    body: JSON.stringify({ raw: encoded })
+  return callBackend('sendEmail', {
+    to:       recipient,
+    subject:  `[Rindegastos] ${expense.status} - ${expense.title}`,
+    htmlBody: html
   });
 }

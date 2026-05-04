@@ -60,13 +60,35 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAuth(onSignIn);
 });
 
+/* Maneja el submit del formulario de login */
+async function handleLogin(ev) {
+  ev.preventDefault();
+  const email  = $('login-email').value.trim();
+  const pass   = $('login-password').value;
+  const btn    = $('login-btn');
+  const errEl  = $('login-error');
+
+  btn.disabled    = true;
+  btn.textContent = 'Ingresando...';
+  errEl.classList.add('hidden');
+  errEl.textContent = '';
+
+  try {
+    await signIn(email, pass);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.classList.remove('hidden');
+    btn.disabled    = false;
+    btn.textContent = 'Ingresar';
+  }
+}
+
 async function _loadViews() {
   const main = document.getElementById('main-content');
   const views = ['dashboard', 'new-expense', 'detail', 'approvals', 'gerencia', 'contabilidad', 'admin', 'batch-detail'];
-  // Detecta la base URL automáticamente (funciona en localhost Y en GitHub Pages)
-  const base = document.querySelector('base')?.href || (location.href.replace(/\/[^/]*$/, '/'));
+  const baseUrl = new URL('.', window.location.href);
   for (const name of views) {
-    const res  = await fetch(`${base}views/${name}.html`);
+    const res  = await fetch(new URL(`views/${name}.html`, baseUrl));
     const html = await res.text();
     main.insertAdjacentHTML('beforeend', html);
   }
@@ -75,11 +97,12 @@ async function _loadViews() {
 async function onSignIn(user) {
   loading(true);
   try {
-    state.role = await getUserRole(user.email);
+    // El rol viene incluido en el objeto user desde el login
+    state.role = user.role || await getUserRole(user.email);
 
-    $('user-name').textContent  = user.name;
-    $('user-email').textContent = user.email;
-    if (user.picture) $('user-avatar').src = user.picture;
+    $('user-name').textContent    = user.displayName || user.email;
+    $('user-email').textContent   = user.email;
+    $('user-avatar').textContent  = (user.displayName || user.email).charAt(0).toUpperCase();
 
     // Mostrar/ocultar nav según rol
     document.querySelectorAll('[data-role]').forEach(el => {
@@ -1156,9 +1179,9 @@ async function _loadAdminUsers() {
   const isSuperAdmin = state.role === 'SUPERADMIN';
   $('users-tbody').innerHTML = users.length
     ? users.map((u, i) => {
-        const isSA       = u.role === 'SUPERADMIN';
-        const canEdit    = isSuperAdmin || !isSA;
-        const rolesOpts  = (isSuperAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'SUPERADMIN'))
+        const isSA      = u.role === 'SUPERADMIN';
+        const canEdit   = isSuperAdmin || !isSA;
+        const rolesOpts = (isSuperAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'SUPERADMIN'))
           .map(r => `<option ${u.role===r?'selected':''}>${r}</option>`).join('');
         return `
         <tr class="table-row">
@@ -1172,12 +1195,17 @@ async function _loadAdminUsers() {
           </td>
           <td class="td">
             ${canEdit
+              ? `<button onclick="changePassword(${i+2})" class="btn-secondary" style="font-size:12px;padding:4px 10px">Cambiar clave</button>`
+              : '—'}
+          </td>
+          <td class="td">
+            ${canEdit
               ? `<button onclick="deleteUser(${i+2})" class="btn-danger-sm">Eliminar</button>`
               : '—'}
           </td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="5" class="empty-row">Sin usuarios registrados</td></tr>';
+    : '<tr><td colspan="6" class="empty-row">Sin usuarios registrados</td></tr>';
 }
 
 async function addUser() {
@@ -1188,12 +1216,24 @@ async function addUser() {
   const rolesDisp = state.role === 'SUPERADMIN' ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'SUPERADMIN');
   const role = prompt(`Rol (${rolesDisp.join(' / ')}):`, 'RENDIDOR')?.toUpperCase().trim();
   if (!rolesDisp.includes(role)) { toast('Rol inválido', 'error'); return; }
+  const password = prompt('Contraseña inicial para este usuario:')?.trim();
+  if (!password) { toast('Debes ingresar una contraseña', 'error'); return; }
   loading(true);
   try {
-    await sheetsAppend('Usuarios', [email, role, nombre, apellido]);
+    await sheetsAppend('Usuarios', [email, role, nombre, apellido, password]);
     state.users = await getUsers();
     await _loadAdminUsers();
     toast('Usuario agregado', 'success');
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function changePassword(rowIndex) {
+  const newPass = prompt('Nueva contraseña para este usuario:')?.trim();
+  if (!newPass) return;
+  loading(true);
+  try {
+    await callBackend('setPassword', { rowIndex, password: newPass });
+    toast('Contraseña actualizada', 'success');
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
 }
 
