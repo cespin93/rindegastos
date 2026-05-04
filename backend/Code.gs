@@ -11,19 +11,28 @@ var TOKEN_SECRET    = 'RGmymgroup2024secret'; // Cámbialo por algo único y sec
 
 // ─── Entry points ─────────────────────────────────────────────────────────────
 
-/* GET: usado para todas las llamadas normales (evita CORS con redirect) */
+/* GET + JSONP: el cliente pasa ?callback=fnName&d={...} */
 function doGet(e) {
   var output;
   try {
-    var raw  = e.parameter.d;
+    var raw = e.parameter.d; // Apps Script ya decodifica el URL encoding
     if (!raw) { output = { error: 'Sin payload' }; }
     else {
-      var body = JSON.parse(decodeURIComponent(raw));
+      var body = JSON.parse(raw);
       output   = _handleBody(body);
     }
   } catch (err) {
     output = { error: err.toString() };
   }
+
+  var cb = e.parameter.callback;
+  if (cb) {
+    // JSONP: envuelve la respuesta en la función callback
+    return ContentService
+      .createTextOutput(cb + '(' + JSON.stringify(output) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+
   return ContentService
     .createTextOutput(JSON.stringify(output))
     .setMimeType(ContentService.MimeType.JSON);

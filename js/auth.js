@@ -43,42 +43,45 @@ function signOut() {
 function getCurrentUser()  { return _currentUser;  }
 function getSessionToken() { return _sessionToken; }
 
-/* Función central de comunicación con el Apps Script backend */
-async function callBackend(action, params = {}, requireAuth = true) {
+/* Función central de comunicación con el Apps Script backend (JSONP) */
+function callBackend(action, params = {}, requireAuth = true) {
   if (!CONFIG.APPS_SCRIPT_URL) {
-    throw new Error('APPS_SCRIPT_URL no configurada en config.js');
+    return Promise.reject(new Error('APPS_SCRIPT_URL no configurada en config.js'));
   }
 
   const body = { action, params };
   if (requireAuth) body.token = _sessionToken;
 
-  // GET request: evita el problema CORS del redirect de Apps Script
-  const url = CONFIG.APPS_SCRIPT_URL + '?d=' + encodeURIComponent(JSON.stringify(body));
+  return new Promise((resolve, reject) => {
+    const cbName = '_rgcb' + Date.now();
 
-  let res;
-  try {
-    res = await fetch(url);
-  } catch (netErr) {
-    throw new Error('Error de red. Verifica tu conexión a internet.');
-  }
+    const cleanup = () => {
+      delete window[cbName];
+      const el = document.getElementById(cbName);
+      if (el) el.remove();
+    };
 
-  if (!res.ok) {
-    throw new Error('Error del servidor (' + res.status + ')');
-  }
+    window[cbName] = (data) => {
+      cleanup();
+      if (data.error) {
+        if (requireAuth && data.error.includes('Sesión inválida')) signOut();
+        reject(new Error(data.error));
+      } else {
+        resolve(data);
+      }
+    };
 
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    throw new Error('Respuesta inválida del servidor');
-  }
+    const url = CONFIG.APPS_SCRIPT_URL
+      + '?callback=' + cbName
+      + '&d=' + encodeURIComponent(JSON.stringify(body));
 
-  if (data.error) {
-    if (requireAuth && data.error.includes('Sesión inválida')) {
-      signOut();
-    }
-    throw new Error(data.error);
-  }
-
-  return data;
+    const script = document.createElement('script');
+    script.id  = cbName;
+    script.src = url;
+    script.onerror = () => {
+      cleanup();
+      reject(new Error('No se pudo conectar con el servidor. Verifica tu conexión.'));
+    };
+    document.head.appendChild(script);
+  });
 }
