@@ -43,6 +43,8 @@ function signOut() {
 function getCurrentUser()  { return _currentUser;  }
 function getSessionToken() { return _sessionToken; }
 
+let _cbCount = 0; // contador global para nombres únicos de callback
+
 /* Función central de comunicación con el Apps Script backend (JSONP) */
 function callBackend(action, params = {}, requireAuth = true) {
   if (!CONFIG.APPS_SCRIPT_URL) {
@@ -53,9 +55,12 @@ function callBackend(action, params = {}, requireAuth = true) {
   if (requireAuth) body.token = _sessionToken;
 
   return new Promise((resolve, reject) => {
-    const cbName = '_rgcb' + Date.now();
+    const cbName = '_rgcb' + (++_cbCount); // contador incremental, siempre único
+
+    let timeoutId;
 
     const cleanup = () => {
+      clearTimeout(timeoutId);
       delete window[cbName];
       const el = document.getElementById(cbName);
       if (el) el.remove();
@@ -71,6 +76,11 @@ function callBackend(action, params = {}, requireAuth = true) {
       }
     };
 
+    timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error('El servidor tardó demasiado. Intenta de nuevo.'));
+    }, 30000);
+
     const url = CONFIG.APPS_SCRIPT_URL
       + '?callback=' + cbName
       + '&d=' + encodeURIComponent(JSON.stringify(body));
@@ -80,7 +90,7 @@ function callBackend(action, params = {}, requireAuth = true) {
     script.src = url;
     script.onerror = () => {
       cleanup();
-      reject(new Error('No se pudo conectar con el servidor. Verifica tu conexión.'));
+      reject(new Error('No se pudo conectar con el servidor.'));
     };
     document.head.appendChild(script);
   });
