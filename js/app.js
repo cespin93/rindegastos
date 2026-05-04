@@ -174,7 +174,7 @@ async function navDashboard() {
   loading(true);
   try {
     showView('view-dashboard');
-    const all = await getExpenses();
+    const [all] = await Promise.all([getExpenses(), _loadFondoFijo()]);
     _mergeExpenses(all);
     const mine = (_isAdmin() || state.role === 'GERENTE')
       ? all
@@ -186,63 +186,59 @@ async function navDashboard() {
 }
 
 function _renderFondoFijo(exps) {
-  const card = $('fondo-fijo-card');
-  if (!card) return;
+  const widget = $('ff-widget');
+  if (!widget) return;
 
-  const email  = getCurrentUser()?.email?.toLowerCase();
-  const now    = new Date();
-  const mes    = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const fondo  = (state.fondoFijo || []).find(f => f.email === email && f.month === mes);
+  const email = getCurrentUser()?.email?.toLowerCase();
+  const now   = new Date();
+  const mes   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const fondo = (state.fondoFijo || []).find(f => f.email === email && f.month === mes);
 
-  if (!fondo || _isAdmin() || state.role === 'GERENTE') {
-    card.classList.add('hidden');
+  if (!fondo || _isAdmin()) {
+    widget.classList.add('hidden');
     return;
   }
 
-  // Gastos del mes en curso (no rechazados)
-  const gastado = exps
+  const gastado   = exps
     .filter(e => e.fechaGasto.startsWith(mes) && e.status !== 'RECHAZADO')
     .reduce((s, e) => s + e.total, 0);
-
   const saldo     = fondo.monto - gastado;
   const excedente = saldo < 0;
+  const pct       = Math.min(Math.round((gastado / fondo.monto) * 100), 100);
+  const barColor  = excedente ? '#dc2626' : pct > 80 ? '#d97706' : '#16a34a';
   const mesLabel  = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
 
-  card.classList.remove('hidden');
-  card.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
-      <div>
-        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;
-                    color:#1e40af;margin-bottom:4px">Fondo Fijo — ${mesLabel}</div>
-        <div style="display:flex;gap:32px;flex-wrap:wrap">
-          <div>
-            <div style="font-size:11px;color:#6b7280">Asignado</div>
-            <div style="font-size:20px;font-weight:700;color:#374151">${fmt(fondo.monto)}</div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:#6b7280">Gastado este mes</div>
-            <div style="font-size:20px;font-weight:700;color:#374151">${fmt(gastado)}</div>
-          </div>
-          <div>
-            <div style="font-size:11px;color:#6b7280">${excedente ? 'Excedente' : 'Disponible'}</div>
-            <div style="font-size:22px;font-weight:800;color:${excedente ? '#dc2626' : '#16a34a'}">
-              ${excedente ? '-' : ''}${fmt(Math.abs(saldo))}
-            </div>
-          </div>
-        </div>
-      </div>
-      <div style="width:160px">
-        <div style="font-size:11px;color:#6b7280;margin-bottom:4px">Uso del fondo</div>
-        <div style="background:#e5e7eb;border-radius:99px;height:10px;overflow:hidden">
-          <div style="height:100%;border-radius:99px;width:${Math.min((gastado/fondo.monto)*100,100)}%;
-                      background:${excedente ? '#dc2626' : gastado/fondo.monto > 0.8 ? '#d97706' : '#16a34a'};
-                      transition:width .3s"></div>
-        </div>
-        <div style="font-size:11px;color:#6b7280;margin-top:4px;text-align:right">
-          ${Math.round((gastado/fondo.monto)*100)}% utilizado
-        </div>
-      </div>
-    </div>`;
+  $('ff-widget-label').textContent = excedente
+    ? `⚠️ Excedido ${fmt(Math.abs(saldo))}`
+    : `💰 Disponible ${fmt(saldo)}`;
+
+  $('ff-widget-content').innerHTML = `
+    <div class="ff-month">Fondo Fijo — ${mesLabel}</div>
+    <div class="ff-row">
+      <span class="ff-label">Asignado</span>
+      <span class="ff-value">${fmt(fondo.monto)}</span>
+    </div>
+    <div class="ff-row">
+      <span class="ff-label">Gastado este mes</span>
+      <span class="ff-value">${fmt(gastado)}</span>
+    </div>
+    <div class="ff-row">
+      <span class="ff-label" style="font-weight:600">${excedente ? 'Excedente' : 'Disponible'}</span>
+      <span class="ff-value" style="color:${excedente ? '#dc2626' : '#16a34a'};font-size:20px">
+        ${excedente ? '-' : ''}${fmt(Math.abs(saldo))}
+      </span>
+    </div>
+    <div class="ff-bar-track">
+      <div class="ff-bar-fill" style="width:${pct}%;background:${barColor}"></div>
+    </div>
+    <div class="ff-pct">${pct}% utilizado</div>`;
+
+  widget.classList.remove('hidden');
+}
+
+function toggleFfWidget() {
+  const panel = $('ff-widget-panel');
+  panel.classList.toggle('hidden');
 }
 
 function _renderStats(exps) {
@@ -912,6 +908,24 @@ async function autoFillFromReceipt() {
   }
 }
 
+function _checkDuplicateFolio(provider, docNumber, excludeExpenses = []) {
+  if (!provider || !docNumber) return null;
+  const prov = provider.trim().toLowerCase();
+  const num  = docNumber.trim().toLowerCase();
+  const existing = (state.expenses || []).find(e =>
+    e.status !== 'RECHAZADO' &&
+    e.provider.trim().toLowerCase() === prov &&
+    e.docNumber.trim().toLowerCase() === num
+  );
+  if (existing) return existing;
+  // Check within the provided list (for batch mode)
+  const inBatch = excludeExpenses.find(e =>
+    (e.provider || '').trim().toLowerCase() === prov &&
+    (e.docNumber || '').trim().toLowerCase() === num
+  );
+  return inBatch || null;
+}
+
 async function submitExpense(ev) {
   ev.preventDefault();
   const f = ev.target;
@@ -928,6 +942,11 @@ async function submitExpense(ev) {
     costCenter:    f.costCenter.value,
     receipts:      window._receipts || []
   };
+  const dup = _checkDuplicateFolio(exp.provider, exp.docNumber);
+  if (dup) {
+    toast(`Folio "${exp.docNumber}" ya existe para el proveedor "${exp.provider}"`, 'error');
+    return;
+  }
   loading(true);
   try {
     await addExpense(exp, getCurrentUser().email);
@@ -1106,6 +1125,17 @@ async function submitBulk() {
       notes: '', approverEmail, batchName,
       receipts: window._bulkReceipts.get(id) || []
     });
+  }
+
+  // Validate folio duplicates (system-wide + within batch)
+  const seen = [];
+  for (const exp of expenses) {
+    const dup = _checkDuplicateFolio(exp.provider, exp.docNumber, seen);
+    if (dup) {
+      toast(`Folio "${exp.docNumber}" duplicado para el proveedor "${exp.provider}"`, 'error');
+      return;
+    }
+    if (exp.provider && exp.docNumber) seen.push(exp);
   }
 
   loading(true);
