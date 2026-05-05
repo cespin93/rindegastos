@@ -1,0 +1,101 @@
+<div id="view-tutorial" class="view hidden">
+  <div class="page-header">
+    <h2 class="page-title">📖 Tutorial — Cómo usar Rindegastos</h2>
+  </div>
+
+  <div style="max-width:780px;display:flex;flex-direction:column;gap:20px">
+
+    <!-- Intro -->
+    <div class="tut-card">
+      <p style="color:#374151;font-size:14px;line-height:1.7">
+        <strong>Rindegastos</strong> es el sistema de rendición de gastos de la empresa. Permite registrar, aprobar y controlar los gastos de cada empleado de forma ordenada y trazable.
+      </p>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="tut-card">
+      <div class="tut-title">📊 Dashboard — Mis Rendiciones</div>
+      <ul class="tut-list">
+        <li>Es la pantalla principal. Muestra un resumen de todas tus rendiciones: cantidad, total, pendientes y rechazadas.</li>
+        <li>Podés buscar por concepto, categoría o proveedor, y filtrar por estado.</li>
+        <li>Usá <strong>↻ Actualizar</strong> para refrescar los datos en cualquier momento.</li>
+        <li>Si tenés <strong>Fondo Fijo</strong> asignado, verás el widget en la esquina inferior derecha con tu saldo disponible del mes.</li>
+      </ul>
+    </div>
+
+    <!-- Nueva Rendición -->
+    <div class="tut-card">
+      <div class="tut-title">➕ Nueva Rendición</div>
+      <div class="tut-subtitle">Modo Individual</div>
+      <ul class="tut-list">
+        <li>Completá los campos obligatorios: Concepto, Fecha, Monto, Categoría, Tipo de documento y Aprobador.</li>
+        <li>Podés subir uno o más archivos (boleta, factura, foto) como respaldo.</li>
+        <li>Usá el botón <strong>✨ Autocompletar con IA</strong> para extraer automáticamente los datos desde una foto del documento.</li>
+        <li>El sistema valida que no exista otro documento con el mismo folio y proveedor.</li>
+      </ul>
+      <div class="tut-subtitle" style="margin-top:12px">Modo Múltiple (Carga Masiva)</div>
+      <ul class="tut-list">
+        <li>Ideal para ingresar varios gastos de una vez. Asigná un nombre al conjunto.</li>
+        <li>Hacé clic en <strong>+ Agregar fila</strong> por cada gasto. Podés subir archivos y usar la IA por fila.</li>
+        <li>Al enviar, el sistema valida todos los gastos antes de registrarlos.</li>
+      </ul>
+    </div>
+
+    <!-- Aprobaciones -->
+    <div class="tut-card tut-role">
+      <div class="tut-role-badge">APROBADOR / ADMIN</div>
+      <div class="tut-title">✅ Aprobaciones</div>
+      <ul class="tut-list">
+        <li>Muestra todas las rendiciones <strong>PENDIENTE</strong> de tus empleados.</li>
+        <li>Hacé clic en <strong>Revisar</strong> para ver el detalle: archivos adjuntos, datos del documento y concepto.</li>
+        <li>Podés <strong>Aprobar</strong> o <strong>Rechazar</strong> con un comentario opcional.</li>
+        <li>Al aprobar una rendición de un GERENTE, pasa directo a AUTORIZADO sin pasar por gerencia.</li>
+      </ul>
+    </div>
+
+    <!-- Gerencia -->
+    <div class="tut-card tut-role">
+      <div class="tut-role-badge">GERENTE / ADMIN</div>
+      <div class="tut-title">🏛 Gerencia</div>
+      <ul class="tut-list">
+        <li>Muestra los conjuntos de gastos que ya fueron aprobados y esperan autorización final.</li>
+        <li>Podés revisar cada gasto del conjunto antes de autorizar.</li>
+        <li>Al hacer clic en <strong>Autorizar todo</strong> se genera un informe de autorización automáticamente.</li>
+      </ul>
+    </div>
+
+    <!-- Contabilidad -->
+    <div class="tut-card tut-role">
+      <div class="tut-role-badge">ADMIN</div>
+      <div class="tut-title">🧾 Contabilidad</div>
+      <ul class="tut-list">
+        <li>Vista exclusiva de gastos con estado <strong>AUTORIZADO</strong>.</li>
+        <li>Filtrá por tipo de documento, categoría o rango de fechas.</li>
+        <li>Exportá a CSV para procesamiento contable externo.</li>
+      </ul>
+    </div>
+
+    <!-- Admin -->
+    <div class="tut-card tut-role">
+      <div class="tut-role-badge">ADMIN</div>
+      <div class="tut-title">⚙️ Administración</div>
+      <ul class="tut-list">
+        <li><strong>Usuarios:</strong> Crea, edita roles, asigna email de notificación y cambia contraseñas.</li>
+        <li><strong>Categorías:</strong> Administra las categorías de gasto disponibles.</li>
+        <li><strong>Centros de Costo:</strong> Administra los centros de costo.</li>
+        <li><strong>Fondo Fijo:</strong> Asigna un monto mensual por usuario. Al llegar al 80% el sistema avisa; si se excede, muestra el excedente en rojo en el widget.</li>
+        <li><strong>Configuración:</strong> Ingresa la clave de Gemini para habilitar el autocompletado con IA.</li>
+      </ul>
+    </div>
+
+    <!-- Cambio de contraseña -->
+    <div class="tut-card">
+      <div class="tut-title">🔑 Cambiar contraseña</div>
+      <ul class="tut-list">
+        <li>Cada usuario puede cambiar su propia contraseña desde el botón <strong>🔑 Cambiar contraseña</strong> en la barra lateral.</li>
+        <li>Se solicita la contraseña actual como verificación.</li>
+      </ul>
+    </div>
+
+  </div>
+</div>

@@ -1203,6 +1203,16 @@ async function submitBulk() {
   }
 }
 
+// ─── TUTORIAL ─────────────────────────────────
+async function navTutorial() {
+  const mc = $('main-content');
+  if (!$('view-tutorial')) {
+    const html = await fetch('./views/tutorial.html').then(r => r.text());
+    mc.insertAdjacentHTML('beforeend', html);
+  }
+  showView('view-tutorial');
+}
+
 // ─── ADMINISTRACIÓN ───────────────────────────
 async function navAdmin() {
   showView('view-admin');
