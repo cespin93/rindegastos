@@ -15,11 +15,27 @@ const state = {
 // ─── Helpers DOM ──────────────────────────────
 const $ = id => document.getElementById(id);
 const _isAdmin = () => state.role === 'ADMIN' || state.role === 'SUPERADMIN';
+const _getCurrentUserKey = () => ((getCurrentUser()?.email || '').toLowerCase().split('@')[0] || '');
+const _getManagerCompanyScope = () => {
+  if (state.role !== 'GERENTE') return '';
+  const userKey = _getCurrentUserKey();
+  if (userKey === 'mmoreno') return '';
+  if (userKey === 'jpalma') return 'C Y O';
+  return state.empresaUsuario || '';
+};
 const _canViewAllCompanies = () => {
   if (_isAdmin()) return true;
-  const email = (getCurrentUser()?.email || '').toLowerCase();
-  const userKey = email.split('@')[0];
-  return state.role === 'GERENTE' && userKey === 'mmoreno';
+  return state.role === 'GERENTE' && !_getManagerCompanyScope();
+};
+const _canAccessExpense = exp => {
+  if (_isAdmin()) return true;
+  const user = getCurrentUser();
+  if (!user?.email) return false;
+  if (state.role === 'GERENTE') {
+    const empresaScope = _getManagerCompanyScope();
+    return !empresaScope || exp.empresa === empresaScope;
+  }
+  return exp.email === user.email.toLowerCase();
 };
 const _getUserName = email => {
   const u = state.users.find(u => u.email === (email || '').toLowerCase());
@@ -358,9 +374,7 @@ async function navDashboard() {
     showView('view-dashboard');
     const [all] = await Promise.all([getExpenses(), _loadFondoFijo()]);
     _mergeExpenses(all);
-    const mine = (_isAdmin() || state.role === 'GERENTE')
-      ? all
-      : all.filter(e => e.email === getCurrentUser().email.toLowerCase());
+    const mine = all.filter(_canAccessExpense);
     _renderStats(mine);
     _renderFondoFijo(mine);
     _renderTable(mine);
@@ -689,10 +703,7 @@ function printAuthReport(batchName, authEmail, snapshot) {
 function filterTable() {
   const q = $('search').value.toLowerCase();
   const s = $('filter-status').value;
-  const user = getCurrentUser();
-  let exps = (_isAdmin() || state.role === 'GERENTE')
-    ? state.expenses
-    : state.expenses.filter(e => e.email === user.email.toLowerCase());
+  let exps = state.expenses.filter(_canAccessExpense);
   exps = exps.filter(e =>
     (!q || e.title.toLowerCase().includes(q) || e.category.toLowerCase().includes(q) || (e.provider || '').toLowerCase().includes(q)) &&
     (!s || e.status === s)
@@ -702,10 +713,7 @@ function filterTable() {
 }
 
 function exportCSV() {
-  const user = getCurrentUser();
-  const exps = (_isAdmin() || state.role === 'GERENTE')
-    ? state.expenses
-    : state.expenses.filter(e => e.email === user.email.toLowerCase());
+  const exps = state.expenses.filter(_canAccessExpense);
   const headers = ['Fecha','Concepto','Categoría','Tipo Doc','N° Doc','Proveedor','Monto','Estado','Aprobador','Observaciones'];
   const rows = exps.map(e => [
     e.fechaGasto, e.title, e.category, e.docType, e.docNumber,
@@ -854,8 +862,8 @@ async function navApprovals() {
       // Admin ve todos los PENDIENTE
       pending = all.filter(e => e.status === 'PENDIENTE');
     } else if (state.role === 'GERENTE') {
-      // Gerente ve todos los PENDIENTE (solo lectura)
-      pending = all.filter(e => e.status === 'PENDIENTE');
+      // Gerente ve los PENDIENTE dentro de su alcance (solo lectura)
+      pending = all.filter(e => e.status === 'PENDIENTE' && _canAccessExpense(e));
     } else {
       // Aprobador ve solo los asignados a él
       pending = all.filter(e =>
@@ -912,7 +920,7 @@ async function navGerencia() {
     const all = await getExpenses();
     _mergeExpenses(all);
     // Solo rendiciones con APROBADO (esperando autorización gerencial)
-    const toAuthorize = all.filter(e => e.status === 'APROBADO');
+    const toAuthorize = all.filter(e => e.status === 'APROBADO' && _canAccessExpense(e));
     _renderGerencia(toAuthorize);
     const countText = toAuthorize.length
       ? `${toAuthorize.length} pendiente${toAuthorize.length > 1 ? 's' : ''} de autorización`
@@ -1461,7 +1469,7 @@ async function navReportes() {
     const all = await getExpenses();
     _mergeExpenses(all);
 
-    // Filtro empresa: GERENTE solo ve la suya
+    // Filtro empresa: GERENTE solo ve su alcance permitido
     const esGerente = state.role === 'GERENTE' && !_canViewAllCompanies();
     const empWrap   = $('rep-empresa-wrap');
     if (empWrap) empWrap.classList.toggle('hidden', esGerente);
@@ -1492,7 +1500,7 @@ async function navReportes() {
 
 function renderReportes() {
   const empresa = (state.role === 'GERENTE' && !_canViewAllCompanies())
-    ? state.empresaUsuario
+    ? _getManagerCompanyScope()
     : ($('rep-empresa')?.value || '');
   const desde  = $('rep-desde')?.value  || '';
   const hasta  = $('rep-hasta')?.value  || '';
