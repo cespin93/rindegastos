@@ -133,10 +133,13 @@ function _getBackendDeploymentId() {
 }
 
 function _setBackendStatus(message, kind = 'pending') {
-  ['backend-status', 'app-backend-status'].forEach(id => {
+  ['backend-status', 'app-backend-status', 'app-backend-status-floating'].forEach(id => {
     const el = $(id);
     if (!el) return;
-    el.className = `backend-status backend-status-${kind}` + (id === 'app-backend-status' ? ' sidebar-backend-status' : '');
+    const extraClass = id === 'app-backend-status'
+      ? ' sidebar-backend-status'
+      : (id === 'app-backend-status-floating' ? ' app-backend-status-floating' : '');
+    el.className = `backend-status backend-status-${kind}` + extraClass;
     el.textContent = message;
   });
 }
