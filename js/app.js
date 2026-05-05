@@ -62,12 +62,16 @@ function openFileViewer(r) {
   linkEl.href        = r.url  || '#';
 
   const isImage = r.mime?.startsWith('image/');
-  const previewUrl = `https://drive.google.com/file/d/${r.id}/preview`;
-  const imgUrl     = `https://drive.google.com/uc?id=${r.id}&export=view`;
 
-  content.innerHTML = isImage
-    ? `<img src="${imgUrl}" alt="${r.name}" onerror="this.src='${previewUrl}'">`
-    : `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
+  if (!isImage) {
+    // PDFs y otros: abrir directo en nueva pestaña sin iframe
+    window.open(r.url, '_blank');
+    return;
+  }
+
+  const imgUrl = `https://drive.google.com/uc?id=${r.id}&export=view`;
+  content.innerHTML = `<img src="${imgUrl}" alt="${r.name}"
+    onerror="this.outerHTML='<p style=color:#fff;padding:20px>No se pudo cargar la imagen. <a href=\\'${r.url}\\' target=\\'_blank\\' style=color:#93c5fd>Abrir en Drive</a></p>'">`;
 
   overlay.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
