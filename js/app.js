@@ -127,6 +127,32 @@ const fmtDate = s => {
   return isNaN(parsed) ? s : parsed.toLocaleDateString('es-CL');
 };
 
+function _getBackendDeploymentId() {
+  const match = String(CONFIG?.APPS_SCRIPT_URL || '').match(/\/s\/([^/]+)\/exec/i);
+  return match ? match[1] : 'desconocido';
+}
+
+function _setBackendStatus(message, kind = 'pending') {
+  ['backend-status', 'app-backend-status'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.className = `backend-status backend-status-${kind}` + (id === 'app-backend-status' ? ' sidebar-backend-status' : '');
+    el.textContent = message;
+  });
+}
+
+async function _refreshBackendStatus() {
+  const deploymentId = _getBackendDeploymentId();
+  _setBackendStatus(`Backend: comprobando deployment ${deploymentId}...`, 'pending');
+  try {
+    const res = await callBackend('healthcheck', {}, false);
+    const version = res.version || 'sin version';
+    _setBackendStatus(`Backend activo: ${version} | deployment ${deploymentId}`, 'ok');
+  } catch (e) {
+    _setBackendStatus(`Backend no verificado: ${e.message} | deployment ${deploymentId}`, 'error');
+  }
+}
+
 function badge(status) {
   const cls = {
     PENDIENTE:  'badge-yellow',
@@ -140,6 +166,7 @@ function badge(status) {
 // ─── Arranque ─────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await _loadViews();
+  await _refreshBackendStatus();
   initAuth(onSignIn);
 });
 

@@ -28,6 +28,7 @@
       <button id="login-btn" class="btn-ingresar" type="submit">Ingresar</button>
       <div id="login-error" class="login-error hidden"></div>
     </form>
+    <div id="backend-status" class="backend-status backend-status-pending">Backend: comprobando deployment...</div>
   </div>
 </div>
 
@@ -73,6 +74,9 @@
           <div id="user-email"></div>
         </div>
       </div>
+      <div id="app-backend-status" class="backend-status backend-status-pending sidebar-backend-status">
+        Backend: comprobando deployment...
+      </div>
       <button class="btn-change-pass" onclick="changeOwnPassword()">🔑 Cambiar contraseña</button>
       <button class="btn-signout" onclick="signOut()">Cerrar sesión</button>
     </div>
@@ -112,9 +116,9 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="./js/config.js?v=7"></script>
-<script src="./js/auth.js?v=7"></script>
-<script src="./js/api.js?v=7"></script>
-<script src="./js/app.js?v=7"></script>
+<script src="./js/config.js?v=8"></script>
+<script src="./js/auth.js?v=8"></script>
+<script src="./js/api.js?v=8"></script>
+<script src="./js/app.js?v=8"></script>
 </body>
 </html>
