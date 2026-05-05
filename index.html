@@ -85,6 +85,20 @@
   <!-- VISTAS -->
   <main id="main-content"></main>
 
+  <!-- VISOR ARCHIVOS -->
+  <div id="file-viewer-overlay" class="hidden" onclick="closeFileViewer()">
+    <div id="file-viewer-box" onclick="event.stopPropagation()">
+      <div id="file-viewer-header">
+        <span id="file-viewer-name"></span>
+        <div style="display:flex;gap:8px">
+          <a id="file-viewer-link" target="_blank" class="btn-secondary" style="font-size:12px;padding:5px 12px;text-decoration:none">↗ Abrir en Drive</a>
+          <button onclick="closeFileViewer()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:14px">✕</button>
+        </div>
+      </div>
+      <div id="file-viewer-content"></div>
+    </div>
+  </div>
+
   <!-- WIDGET FONDO FIJO -->
   <div id="ff-widget" class="hidden">
     <button id="ff-widget-btn" onclick="toggleFfWidget()">

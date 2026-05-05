@@ -44,6 +44,41 @@ function showView(id) {
 
 function goBack() { showView(state.prevView || 'view-dashboard'); }
 
+function _receiptIcon(mime) {
+  if (!mime) return '📎';
+  if (mime.startsWith('image/')) return '🖼';
+  if (mime === 'application/pdf') return '📄';
+  return '📎';
+}
+
+function openFileViewer(r) {
+  const overlay = $('file-viewer-overlay');
+  const content = $('file-viewer-content');
+  const nameEl  = $('file-viewer-name');
+  const linkEl  = $('file-viewer-link');
+  if (!overlay) return;
+
+  nameEl.textContent = r.name || 'Archivo';
+  linkEl.href        = r.url  || '#';
+
+  const isImage = r.mime?.startsWith('image/');
+  const previewUrl = `https://drive.google.com/file/d/${r.id}/preview`;
+  const imgUrl     = `https://drive.google.com/uc?id=${r.id}&export=view`;
+
+  content.innerHTML = isImage
+    ? `<img src="${imgUrl}" alt="${r.name}" onerror="this.src='${previewUrl}'">`
+    : `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
+
+  overlay.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeFileViewer() {
+  $('file-viewer-overlay')?.classList.add('hidden');
+  $('file-viewer-content').innerHTML = '';
+  document.body.style.overflow = '';
+}
+
 const fmt     = n => '$' + Number(n).toLocaleString('es-CL');
 const fmtDate = s => {
   if (!s) return '—';
@@ -578,7 +613,10 @@ function openDetail(rowIndex, context) {
   $('d-observations').textContent = e.observations  || '—';
 
   $('d-receipts').innerHTML = e.receipts?.length
-    ? e.receipts.map(r => `<a href="${r.url}" target="_blank" class="receipt-link">📎 ${r.name}</a>`).join('')
+    ? e.receipts.map(r => `
+        <button class="receipt-link" onclick='openFileViewer(${JSON.stringify(r)})'>
+          ${_receiptIcon(r.mime)} ${r.name}
+        </button>`).join('')
     : '<p class="text-muted">Sin archivos adjuntos</p>';
 
   const user = getCurrentUser();
