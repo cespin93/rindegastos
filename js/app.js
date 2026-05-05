@@ -51,6 +51,17 @@ function _receiptIcon(mime) {
   return '📎';
 }
 
+let _activeReceiptObjectUrl = null;
+
+function _base64ToBlob(base64, mime) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime || 'application/octet-stream' });
+}
+
 function openFileViewer(r) {
   const overlay = $('file-viewer-overlay');
   const content = $('file-viewer-content');
@@ -62,8 +73,8 @@ function openFileViewer(r) {
   linkEl.href        = r.url  || '#';
 
   const isImage    = r.mime?.startsWith('image/');
-  const previewUrl = `https://drive.google.com/file/d/${r.id}/preview`;
-  const imgUrl     = `https://drive.google.com/uc?id=${r.id}&export=view`;
+  const previewUrl = r.inlineUrl || `https://drive.google.com/file/d/${r.id}/preview`;
+  const imgUrl     = r.inlineUrl || `https://drive.google.com/uc?id=${r.id}&export=view`;
 
   content.innerHTML = isImage
     ? `<img src="${imgUrl}" alt="${r.name}"
@@ -77,24 +88,33 @@ function openFileViewer(r) {
 function closeFileViewer() {
   $('file-viewer-overlay')?.classList.add('hidden');
   $('file-viewer-content').innerHTML = '';
+  if (_activeReceiptObjectUrl) {
+    URL.revokeObjectURL(_activeReceiptObjectUrl);
+    _activeReceiptObjectUrl = null;
+  }
   document.body.style.overflow = '';
 }
 
 async function openReceipt(r) {
   if (!r) return;
-  let accessUrl = r.url;
   try {
     if (r.id) {
-      const res = await callBackend('ensureReceiptAccess', { fileId: r.id });
-      accessUrl = res?.url || accessUrl;
+      const res = await getReceiptContent(r.id);
+      const blob = _base64ToBlob(res.data, res.mime || r.mime);
+      if (_activeReceiptObjectUrl) URL.revokeObjectURL(_activeReceiptObjectUrl);
+      _activeReceiptObjectUrl = URL.createObjectURL(blob);
+      openFileViewer({
+        ...r,
+        name: res.name || r.name,
+        mime: res.mime || r.mime,
+        inlineUrl: _activeReceiptObjectUrl
+      });
+      return;
     }
   } catch (e) {
-    console.warn('[Rindegastos] no se pudo garantizar acceso al adjunto:', e.message);
+    console.warn('[Rindegastos] no se pudo cargar el adjunto inline:', e.message);
   }
-  const win = window.open(accessUrl || r.url, '_blank', 'noopener');
-  if (!win) {
-    toast('El navegador bloqueó la apertura del adjunto. Usa el botón de abrir en una nueva pestaña.', 'info');
-  }
+  openFileViewer(r);
 }
 
 const fmt     = n => '$' + Number(n).toLocaleString('es-CL');

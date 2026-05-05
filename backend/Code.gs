@@ -89,6 +89,9 @@ function _dispatch(action, params, user) {
     case 'uploadFile':
       return _uploadFile(params.name, params.data, params.mime);
 
+    case 'getReceiptContent':
+      return _getReceiptContent(params.fileId, user);
+
     case 'sendEmail':
       _sendEmail(params.to, params.subject, params.htmlBody);
       return { ok: true };
@@ -102,6 +105,28 @@ function _dispatch(action, params, user) {
 
     default:
       return { error: 'Acción desconocida: ' + action };
+  }
+}
+
+function _getReceiptContent(fileId, user) {
+  if (!fileId) {
+    return { error: 'fileId requerido' };
+  }
+  if (!user || !user.email) {
+    return { error: 'Usuario no autenticado' };
+  }
+  try {
+    var file = DriveApp.getFileById(fileId);
+    var blob = file.getBlob();
+    return {
+      ok: true,
+      fileId: file.getId(),
+      name: file.getName(),
+      mime: blob.getContentType() || file.getMimeType() || 'application/octet-stream',
+      data: Utilities.base64Encode(blob.getBytes())
+    };
+  } catch (e) {
+    return { error: 'No se pudo obtener el adjunto: ' + (e.message || String(e)) };
   }
 }
 

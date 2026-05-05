@@ -219,6 +219,22 @@ async function uploadFile(file) {
   return data;
 }
 
+async function getReceiptContent(fileId) {
+  const body = {
+    action: 'getReceiptContent',
+    token:  getSessionToken(),
+    params: { fileId }
+  };
+  const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: 'POST',
+    body:   JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error('Error al obtener adjunto (' + res.status + ')');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
 // ─────────────────────────────────────────────
 //  CONFIG DEL SHEET (clave Gemini, etc.)
 // ─────────────────────────────────────────────
