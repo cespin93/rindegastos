@@ -523,7 +523,7 @@ function _renderTable(exps) {
 }
 
 function openBatchDetail(batchName, context = 'dashboard') {
-  const list = state.expenses.filter(e => e.batchName === batchName);
+  const list = state.expenses.filter(e => e.batchName === batchName && _canAccessExpense(e));
   if (!list.length) return;
 
   state._currentBatch   = batchName;
@@ -587,7 +587,7 @@ function openBatchDetail(batchName, context = 'dashboard') {
 
 async function authorizeAll() {
   const batchName = state._currentBatch;
-  const list      = state.expenses.filter(e => e.batchName === batchName && e.status === 'APROBADO');
+  const list      = state.expenses.filter(e => e.batchName === batchName && e.status === 'APROBADO' && _canAccessExpense(e));
   if (!list.length) { toast('No hay gastos aprobados para autorizar', 'info'); return; }
 
   if (!confirm(`¿Autorizar los ${list.length} gasto(s) aprobados del conjunto "${batchName}"?`)) return;
@@ -622,7 +622,7 @@ async function authorizeAll() {
 
 function printAuthReport(batchName, authEmail, snapshot) {
   const batchName_ = batchName || state._currentBatch;
-  const list       = state.expenses.filter(e => e.batchName === batchName_);
+  const list       = state.expenses.filter(e => e.batchName === batchName_ && _canAccessExpense(e));
   const total      = list.reduce((s, e) => s + e.total, 0);
   const authName   = _getUserName(authEmail) || authEmail || _getUserName(getCurrentUser()?.email);
   const fecha      = new Date().toLocaleDateString('es-CL');
@@ -731,6 +731,10 @@ function exportCSV() {
 function openDetail(rowIndex, context) {
   const e = state.expenses.find(x => x.rowIndex === rowIndex);
   if (!e) return;
+  if (!_canAccessExpense(e)) {
+    toast('No tienes permisos para visualizar este gasto', 'error');
+    return;
+  }
   state.currentExpense = e;
   state.detailContext  = context || 'dashboard';
 
@@ -768,6 +772,7 @@ function openDetail(rowIndex, context) {
     context === 'gerencia' &&
     e.status === 'APROBADO' &&
     (state.role === 'GERENTE' || _isAdmin()) &&
+    _canAccessExpense(e) &&
     (e.email !== user.email.toLowerCase() || state.role === 'SUPERADMIN');
 
   $('d-actions-l1').classList.toggle('hidden', !canL1);
