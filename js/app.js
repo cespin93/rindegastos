@@ -169,7 +169,6 @@ function badge(status) {
 // ─── Arranque ─────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await _loadViews();
-  await _refreshBackendStatus();
   initAuth(onSignIn);
 });
 
