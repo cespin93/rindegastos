@@ -874,6 +874,9 @@ async function navNewExpense() {
   $('file-preview').innerHTML = '';
   window._receipts      = [];
   window._originalFiles = [];
+  window._docPreviewIndex = 0;
+  const panel = $('doc-preview-panel');
+  if (panel) panel.classList.add('hidden');
   const autofillBtn = $('autofill-btn-wrap');
   if (autofillBtn) autofillBtn.style.display = 'none';
   const batchNameInput = $('bulk-batch-name');
@@ -890,7 +893,14 @@ window._originalFiles = []; // archivos originales para OCR
 
 async function handleFiles(input) {
   const preview = $('file-preview');
-  for (const file of Array.from(input.files)) {
+  const newFiles = Array.from(input.files);
+
+  // Mostrar preview inmediato del primer archivo (antes de subir)
+  if (newFiles.length > 0 && window._originalFiles.length === 0) {
+    _showDocPreviewFile(newFiles[0]);
+  }
+
+  for (const file of newFiles) {
     const item = document.createElement('div');
     item.className = 'file-item file-uploading';
     item.innerHTML = `<div class="spinner"></div> Subiendo ${file.name}...`;
@@ -906,9 +916,54 @@ async function handleFiles(input) {
       item.innerHTML = `❌ ${file.name}: ${e.message}`;
     }
   }
-  // Mostrar botón de autocompletar si hay al menos un archivo subido
+  _updateDocPreview();
   const btn = $('autofill-btn-wrap');
   if (btn) btn.style.display = window._originalFiles.length ? 'flex' : 'none';
+}
+
+window._docPreviewIndex = 0;
+
+function _showDocPreviewFile(file) {
+  const panel = $('doc-preview-panel');
+  const content = $('doc-preview-content');
+  if (!panel || !content) return;
+  panel.classList.remove('hidden');
+  const url = URL.createObjectURL(file);
+  if (file.type.startsWith('image/')) {
+    content.innerHTML = `<img src="${url}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:6px">`;
+  } else if (file.type === 'application/pdf') {
+    content.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none;border-radius:6px"></iframe>`;
+  } else {
+    content.innerHTML = `<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:8px">📎</div><div style="font-size:13px;color:#6b7280">${file.name}</div></div>`;
+  }
+}
+
+function _updateDocPreview() {
+  const panel = $('doc-preview-panel');
+  const nav = $('doc-preview-nav');
+  const content = $('doc-preview-content');
+  if (!panel || !content) return;
+  const files = window._originalFiles;
+  if (!files.length) {
+    panel.classList.add('hidden');
+    return;
+  }
+  if (window._docPreviewIndex >= files.length) window._docPreviewIndex = files.length - 1;
+  if (nav) {
+    nav.innerHTML = files.length > 1 ? `
+      <button onclick="_docPreviewGo(-1)" ${window._docPreviewIndex === 0 ? 'disabled' : ''}
+              class="doc-nav-btn">‹</button>
+      <span style="font-size:12px;color:#6b7280">${window._docPreviewIndex + 1} / ${files.length}</span>
+      <button onclick="_docPreviewGo(1)" ${window._docPreviewIndex === files.length - 1 ? 'disabled' : ''}
+              class="doc-nav-btn">›</button>` : '';
+  }
+  _showDocPreviewFile(files[window._docPreviewIndex]);
+}
+
+function _docPreviewGo(dir) {
+  const len = window._originalFiles.length;
+  window._docPreviewIndex = Math.max(0, Math.min(len - 1, window._docPreviewIndex + dir));
+  _updateDocPreview();
 }
 
 async function autoFillBulkRow(rowId) {
@@ -1067,7 +1122,7 @@ window._bulkUploading   = new Set(); // rowIds en proceso de subida
 
 function setExpenseMode(mode) {
   const isSingle = mode === 'single';
-  $('expense-form').classList.toggle('hidden', !isSingle);
+  $('single-layout').classList.toggle('hidden', !isSingle);
   $('bulk-form').classList.toggle('hidden',    isSingle);
   $('btn-mode-single').classList.toggle('mode-btn-active', isSingle);
   $('btn-mode-bulk').classList.toggle('mode-btn-active',  !isSingle);

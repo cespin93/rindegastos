@@ -12,7 +12,8 @@
   </div>
 
   <!-- ── MODO INDIVIDUAL ── -->
-  <form id="expense-form" onsubmit="submitExpense(event)">
+  <div id="single-layout" style="display:flex;gap:24px;align-items:flex-start">
+  <form id="expense-form" onsubmit="submitExpense(event)" style="flex:1;min-width:0">
     <div class="form-card">
       <div class="form-grid col-2">
         <div class="col-full">
@@ -103,6 +104,18 @@
       </div>
     </div>
   </form>
+
+  <!-- Panel de vista previa de documento -->
+  <div id="doc-preview-panel" class="doc-preview-panel hidden">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span style="font-size:13px;font-weight:600;color:#374151">Vista previa del documento</span>
+      <div id="doc-preview-nav" class="doc-preview-nav"></div>
+    </div>
+    <div id="doc-preview-content" class="doc-preview-content">
+      <span class="doc-preview-empty">📎 Adjunta un documento<br>para previsualizarlo aquí</span>
+    </div>
+  </div>
+  </div><!-- /single-layout -->
 
   <!-- ── MODO MÚLTIPLE ── -->
   <div id="bulk-form" class="hidden">

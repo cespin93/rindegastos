@@ -393,6 +393,43 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
 .empresa-admin-cc-header { display:flex; justify-content:space-between; align-items:center; padding:12px 20px 8px; border-bottom:1px solid #f3f4f6; }
 .empresa-admin-cc-list { padding:12px 20px 16px; }
 
+/* ── Panel vista previa documento (Nueva Rendición) ── */
+.doc-preview-panel {
+  width: 380px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 28px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 130px);
+  max-height: 820px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.doc-preview-content {
+  flex: 1;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px dashed #d1d5db;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-preview-content img { max-width:100%; max-height:100%; object-fit:contain; }
+.doc-preview-content iframe { width:100%; height:100%; border:none; }
+.doc-preview-empty { font-size:13px; color:#9ca3af; text-align:center; line-height:1.8; }
+.doc-preview-nav { display:flex; align-items:center; gap:6px; }
+.doc-nav-btn {
+  background: none; border: 1px solid #d1d5db; border-radius: 6px;
+  padding: 2px 9px; cursor: pointer; font-size: 15px; color: #374151;
+}
+.doc-nav-btn:disabled { opacity:.35; cursor:default; }
+.doc-nav-btn:not(:disabled):hover { background:#f3f4f6; }
+
 /* ── Badge púrpura (AUTORIZADO) ── */
 .badge-purple { background: #f5f3ff; color: #6d28d9; }
 
