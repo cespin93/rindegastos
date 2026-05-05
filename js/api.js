@@ -104,10 +104,10 @@ async function _ensureSheet(title) {
 }
 
 async function getFondoFijo() {
-  const rows = await sheetsGet('FondoFijo!A2:C');
+  const rows = await sheetsGet('FondoFijo!A1:C');
   return rows
     .map((r, i) => ({
-      rowIndex: i + 2,
+      rowIndex: i + 1,
       email:    (r[0] || '').toLowerCase(),
       month:    r[1] || '',
       monto:    parseFloat(r[2]) || 0
