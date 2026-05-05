@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rindegastos</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading" class="hidden">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <span style="font-size:14px;color:#374151">Cargando...</span>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-icon">💼</div>
+    <h1 class="login-title">Rindegastos</h1>
+    <p class="login-sub">Sistema de Rendición de Gastos Empresarial</p>
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <input id="login-email"    class="login-input" type="text"     placeholder="Usuario o correo"   required autocomplete="username">
+      <input id="login-password" class="login-input" type="password" placeholder="Contraseña"         required autocomplete="current-password">
+      <button id="login-btn" class="btn-ingresar" type="submit">Ingresar</button>
+      <div id="login-error" class="login-error hidden"></div>
+    </form>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app-screen" class="hidden">
+
+  <!-- SIDEBAR -->
+  <aside>
+    <div class="sidebar-logo">💼 Rindegastos</div>
+    <nav>
+      <button class="nav-btn" data-view="view-dashboard" onclick="navDashboard()">
+        📊 Dashboard
+      </button>
+      <button class="nav-btn" data-view="view-new-expense" onclick="navNewExpense()">
+        ➕ Nueva Rendición
+      </button>
+      <button class="nav-btn" data-role="APROBADOR,GERENTE,ADMIN,SUPERADMIN" data-view="view-approvals" onclick="navApprovals()">
+        ✅ Aprobaciones
+        <span id="nav-approvals-count" style="margin-left:auto;font-size:11px;background:rgba(255,255,255,.2);padding:1px 7px;border-radius:10px"></span>
+      </button>
+      <button class="nav-btn" data-role="GERENTE,ADMIN,SUPERADMIN" data-view="view-gerencia" onclick="navGerencia()">
+        🏛 Gerencia
+        <span id="nav-gerencia-count" style="margin-left:auto;font-size:11px;background:rgba(255,255,255,.2);padding:1px 7px;border-radius:10px"></span>
+      </button>
+      <button class="nav-btn" data-role="ADMIN,SUPERADMIN" data-view="view-contabilidad" onclick="navContabilidad()">
+        🧾 Contabilidad
+      </button>
+      <button class="nav-btn" data-role="ADMIN,SUPERADMIN" data-view="view-admin" onclick="navAdmin()">
+        ⚙️ Administración
+      </button>
+      <button class="nav-btn" data-role="GERENTE,ADMIN,SUPERADMIN" data-view="view-reportes" onclick="navReportes()">
+        📈 Reportes
+      </button>
+      <button class="nav-btn" data-view="view-tutorial" onclick="navTutorial()" style="margin-top:auto">
+        📖 Tutorial
+      </button>
+    </nav>
+    <div class="sidebar-user">
+      <div class="sidebar-user-row">
+        <div id="user-avatar"></div>
+        <div style="overflow:hidden">
+          <div id="user-name"></div>
+          <div id="user-email"></div>
+        </div>
+      </div>
+      <button class="btn-change-pass" onclick="changeOwnPassword()">🔑 Cambiar contraseña</button>
+      <button class="btn-signout" onclick="signOut()">Cerrar sesión</button>
+    </div>
+    <div style="padding:10px 16px;font-size:10px;color:rgba(255,255,255,.3);text-align:center;line-height:1.5">
+      Desarrollado por<br>
+      <span style="color:rgba(255,255,255,.5);font-weight:600">Samuel Espinosa</span>
+    </div>
+  </aside>
+
+  <!-- VISTAS -->
+  <main id="main-content"></main>
+
+  <!-- VISOR ARCHIVOS -->
+  <div id="file-viewer-overlay" class="hidden" onclick="closeFileViewer()">
+    <div id="file-viewer-box" onclick="event.stopPropagation()">
+      <div id="file-viewer-header">
+        <span id="file-viewer-name"></span>
+        <div style="display:flex;gap:8px">
+          <a id="file-viewer-link" target="_blank" class="btn-secondary" style="font-size:12px;padding:5px 12px;text-decoration:none">↗ Abrir en Drive</a>
+          <button onclick="closeFileViewer()" style="background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:6px;padding:5px 10px;cursor:pointer;font-size:14px">✕</button>
+        </div>
+      </div>
+      <div id="file-viewer-content"></div>
+    </div>
+  </div>
+
+  <!-- WIDGET FONDO FIJO -->
+  <div id="ff-widget" class="hidden">
+    <button id="ff-widget-btn" onclick="toggleFfWidget()">
+      <span id="ff-widget-label">💰 Mi Fondo</span>
+    </button>
+    <div id="ff-widget-panel" class="hidden">
+      <div id="ff-widget-content"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="./js/config.js?v=2"></script>
+<script src="./js/auth.js?v=2"></script>
+<script src="./js/api.js?v=2"></script>
+<script src="./js/app.js?v=2"></script>
+</body>
+</html>

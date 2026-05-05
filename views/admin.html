@@ -1,0 +1,117 @@
+<div id="view-admin" class="view hidden">
+  <h2 class="page-title" style="margin-bottom:24px">Administración</h2>
+
+  <div class="tab-bar">
+    <button class="admin-tab-btn admin-tab-active" data-tab="tab-users"
+            onclick="showAdminTab('tab-users')">Usuarios</button>
+    <button class="admin-tab-btn" data-tab="tab-categories"
+            onclick="showAdminTab('tab-categories')">Categorías</button>
+    <button class="admin-tab-btn" data-tab="tab-costcenters"
+            onclick="showAdminTab('tab-costcenters')">Centros de Costo</button>
+    <button class="admin-tab-btn" data-tab="tab-fondo-fijo"
+            onclick="showAdminTab('tab-fondo-fijo')">Fondo Fijo</button>
+    <button class="admin-tab-btn" data-tab="tab-config"
+            onclick="showAdminTab('tab-config')">Configuración</button>
+    <button class="admin-tab-btn" data-tab="tab-empresas"
+            onclick="showAdminTab('tab-empresas')">Empresas</button>
+  </div>
+
+  <!-- Usuarios -->
+  <div id="tab-users" class="admin-tab">
+    <div class="admin-section-header">
+      <span class="admin-section-title">Gestión de Usuarios</span>
+      <button class="btn-primary" onclick="addUser()">+ Agregar usuario</button>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Nombre</th>
+              <th>Apellido</th>
+              <th>Rol</th>
+              <th>Email notificación</th>
+              <th>Empresa</th>
+              <th>Contraseña</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fondo Fijo -->
+  <div id="tab-fondo-fijo" class="admin-tab hidden">
+    <div class="admin-section-header">
+      <span class="admin-section-title">Fondos Fijos por Usuario</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <label style="font-size:13px;font-weight:600;color:#374151">Mes:</label>
+      <input id="ff-month-picker" type="month" class="input-field"
+             style="width:160px;margin:0" onchange="_loadAdminFondoFijo()">
+      <span style="font-size:12px;color:#6b7280">Deja en blanco o 0 para quitar el fondo de ese mes.</span>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Usuario</th>
+              <th>Rol</th>
+              <th style="width:200px">Monto mensual (CLP)</th>
+              <th style="width:100px"></th>
+            </tr>
+          </thead>
+          <tbody id="fondo-fijo-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Configuración -->
+  <div id="tab-config" class="admin-tab hidden">
+    <div class="form-card" style="max-width:560px">
+      <h3 style="margin:0 0 6px;font-size:15px;font-weight:600">Clave API Gemini (OCR)</h3>
+      <p style="margin:0 0 16px;font-size:13px;color:#6b7280">
+        Necesaria para el autocompletar con IA. Se guarda solo en este navegador.<br>
+        Obtén una clave gratis en <strong>aistudio.google.com</strong>.
+      </p>
+      <div style="display:flex;gap:10px;align-items:center">
+        <input id="gemini-key-input" type="password" class="input-field"
+               placeholder="AIzaSy..." style="flex:1;font-family:monospace">
+        <button class="btn-primary" onclick="saveGeminiKey()">Guardar</button>
+      </div>
+      <div id="gemini-key-status" style="margin-top:10px;font-size:13px"></div>
+    </div>
+  </div>
+
+  <!-- Centros de Costo -->
+  <div id="tab-costcenters" class="admin-tab hidden">
+    <div class="admin-section-header">
+      <span class="admin-section-title">Centros de Costo</span>
+      <button class="btn-primary" onclick="addCostCenter()">+ Agregar centro</button>
+    </div>
+    <div id="cc-list"></div>
+  </div>
+
+  <!-- Categorías -->
+  <div id="tab-categories" class="admin-tab hidden">
+    <div class="admin-section-header">
+      <span class="admin-section-title">Categorías de Gastos</span>
+      <button class="btn-primary" onclick="addCategory()">+ Agregar categoría</button>
+    </div>
+    <div id="cats-list"></div>
+  </div>
+
+  <!-- Empresas -->
+  <div id="tab-empresas" class="admin-tab hidden">
+    <div class="admin-section-header">
+      <span class="admin-section-title">Empresas del Grupo</span>
+      <button class="btn-primary" onclick="addEmpresa()">+ Agregar empresa</button>
+    </div>
+    <div id="empresas-admin-list"></div>
+  </div>
+</div>
