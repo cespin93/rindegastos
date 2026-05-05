@@ -291,7 +291,7 @@ async function onSignIn(user) {
     $('login-screen').classList.add('hidden');
     $('app-screen').classList.remove('hidden');
 
-    if (state.role === 'APROBADOR') {
+    if (state.role === 'APROBADOR' || state.role === 'SUPERADMIN') {
       await navApprovals();
     } else if (state.role === 'GERENTE') {
       await navGerencia();
