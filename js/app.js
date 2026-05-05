@@ -68,6 +68,44 @@ function _base64ToBlob(base64, mime) {
   return new Blob([bytes], { type: mime || 'application/octet-stream' });
 }
 
+function _renderPdfWithLoader(container, url, fallbackHref) {
+  if (!container) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:relative;width:100%;height:100%';
+
+  const loader = document.createElement('div');
+  loader.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(15,23,42,.72);color:#fff;z-index:1';
+  loader.innerHTML = '<div class="spinner"></div><div style="font-size:13px;font-weight:600">Cargando PDF...</div>';
+
+  const iframe = document.createElement('iframe');
+  iframe.src = url;
+  iframe.allowFullscreen = true;
+  iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:6px;display:none';
+  iframe.onload = () => {
+    loader.remove();
+    iframe.style.display = 'block';
+  };
+  iframe.onerror = () => {
+    wrapper.innerHTML = fallbackHref
+      ? `<p style="color:#fff;padding:20px">No se pudo cargar el PDF. <a href="${fallbackHref}" target="_blank" style="color:#93c5fd">Abrir en una nueva pestaña</a></p>`
+      : '<p style="color:#fff;padding:20px">No se pudo cargar el PDF.</p>';
+  };
+
+  wrapper.append(loader, iframe);
+  container.innerHTML = '';
+  container.appendChild(wrapper);
+}
+
+function _renderPdfLoadingState(container) {
+  if (!container) return;
+  container.innerHTML = `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(15,23,42,.72);color:#fff;border-radius:6px">
+      <div class="spinner"></div>
+      <div style="font-size:13px;font-weight:600">Cargando PDF...</div>
+    </div>`;
+}
+
 function openFileViewer(r) {
   const overlay = $('file-viewer-overlay');
   const content = $('file-viewer-content');
@@ -79,13 +117,20 @@ function openFileViewer(r) {
   linkEl.href        = r.url  || '#';
 
   const isImage    = r.mime?.startsWith('image/');
+  const isPdf      = (r.mime || '').includes('pdf');
   const previewUrl = r.inlineUrl || `https://drive.google.com/file/d/${r.id}/preview`;
   const imgUrl     = r.inlineUrl || `https://drive.google.com/uc?id=${r.id}&export=view`;
 
-  content.innerHTML = isImage
-    ? `<img src="${imgUrl}" alt="${r.name}"
-        onerror="this.outerHTML='<p style=color:#fff;padding:20px>No se pudo cargar. <a href=\\'${r.url}\\' target=\\'_blank\\' style=color:#93c5fd>Abrir en Drive</a></p>'">`
-    : `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
+  if (r.loading && isPdf) {
+    _renderPdfLoadingState(content);
+  } else if (isImage) {
+    content.innerHTML = `<img src="${imgUrl}" alt="${r.name}"
+        onerror="this.outerHTML='<p style=color:#fff;padding:20px>No se pudo cargar. <a href=\\'${r.url}\\' target=\\'_blank\\' style=color:#93c5fd>Abrir en Drive</a></p>'">`;
+  } else if (isPdf) {
+    _renderPdfWithLoader(content, previewUrl, r.url);
+  } else {
+    content.innerHTML = `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
+  }
 
   overlay.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
@@ -103,7 +148,14 @@ function closeFileViewer() {
 
 async function openReceipt(r) {
   if (!r) return;
+  const isPdf = (r.mime || '').includes('pdf');
   try {
+    if (isPdf) {
+      openFileViewer({
+        ...r,
+        loading: true
+      });
+    }
     if (r.id) {
       const res = await getReceiptContent(r.id);
       const blob = _base64ToBlob(res.data, res.mime || r.mime);
@@ -1006,7 +1058,7 @@ function _showDocPreviewFile(file) {
   if (file.type.startsWith('image/')) {
     content.innerHTML = `<img src="${url}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:6px">`;
   } else if (file.type === 'application/pdf') {
-    content.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none;border-radius:6px"></iframe>`;
+    _renderPdfWithLoader(content, url);
   } else {
     content.innerHTML = `<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:8px">📎</div><div style="font-size:13px;color:#6b7280">${file.name}</div></div>`;
   }
