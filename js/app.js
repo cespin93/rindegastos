@@ -409,6 +409,9 @@ async function authorizeAll() {
       await updateExpenseStatus(e.rowIndex, 'AUTORIZADO', obs, user.email);
       e.status       = 'AUTORIZADO';
       e.observations = obs;
+      if (e.email.includes('@')) {
+        try { await sendReceipt(e, e.email); } catch (_) {}
+      }
     }
     await addAudit('AUTORIZAR_CONJUNTO', user.email, { batchName, count: list.length });
     toast(`${list.length} gastos autorizados. Abriendo informe...`, 'success');
@@ -617,6 +620,10 @@ async function doDecision(newStatus) {
 
     toast(`Rendición ${finalStatus.toLowerCase()} correctamente`, 'success');
 
+    // Notificar al rendidor si tiene email real
+    if (e.email.includes('@')) {
+      try { await sendReceipt(e, e.email); } catch (_) {}
+    }
     if (CONFIG.RECEIPTS_EMAIL) {
       try { await sendReceipt(e, CONFIG.RECEIPTS_EMAIL); } catch (_) {}
     }

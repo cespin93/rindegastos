@@ -277,7 +277,9 @@ async function sendReceipt(expense, toEmail) {
   const recipient = toEmail || CONFIG.RECEIPTS_EMAIL;
   if (!recipient) return;
 
-  const statusColor = { APROBADO: '#16a34a', RECHAZADO: '#dc2626', PENDIENTE: '#d97706' }[expense.status] || '#6b7280';
+  const isOwner     = recipient.toLowerCase() === expense.email.toLowerCase();
+  const statusLabel = { APROBADO: 'aprobada ✅', AUTORIZADO: 'autorizada ✅', RECHAZADO: 'rechazada ❌' }[expense.status] || expense.status;
+  const statusColor = { APROBADO: '#16a34a', AUTORIZADO: '#7c3aed', RECHAZADO: '#dc2626', PENDIENTE: '#d97706' }[expense.status] || '#6b7280';
   const monto = '$' + Number(expense.total).toLocaleString('es-CL');
 
   const html = `
@@ -302,9 +304,13 @@ async function sendReceipt(expense, toEmail) {
   <p style="font-size:11px;color:#9ca3af;margin-top:12px">Rindegastos &bull; ${new Date().toLocaleString('es-CL')}</p>
 </div>`;
 
+  const subject = isOwner
+    ? `Tu rendición fue ${statusLabel} — ${expense.title}`
+    : `[Rindegastos] ${expense.status} - ${expense.title}`;
+
   return callBackend('sendEmail', {
     to:       recipient,
-    subject:  `[Rindegastos] ${expense.status} - ${expense.title}`,
+    subject,
     htmlBody: html
   });
 }
