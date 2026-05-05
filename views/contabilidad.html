@@ -1,0 +1,97 @@
+<div id="view-contabilidad" class="view hidden">
+  <div class="page-header">
+    <div>
+      <h2 class="page-title">Contabilidad</h2>
+      <div id="conta-subtitle" style="font-size:13px;color:#6b7280;margin-top:2px"></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-secondary" onclick="navContabilidad()">↻ Actualizar</button>
+      <button class="btn-primary"   onclick="exportContaCSV()">⬇ Exportar CSV</button>
+    </div>
+  </div>
+
+  <!-- Resumen KPI -->
+  <div class="conta-kpi-grid">
+    <div class="conta-kpi">
+      <div class="conta-kpi-label">Documentos autorizados</div>
+      <div id="conta-kpi-count" class="conta-kpi-value">0</div>
+    </div>
+    <div class="conta-kpi">
+      <div class="conta-kpi-label">Total autorizado</div>
+      <div id="conta-kpi-total" class="conta-kpi-value val-green">$0</div>
+    </div>
+    <div class="conta-kpi">
+      <div class="conta-kpi-label">Boletas</div>
+      <div id="conta-kpi-boleta" class="conta-kpi-value">0</div>
+    </div>
+    <div class="conta-kpi">
+      <div class="conta-kpi-label">Facturas</div>
+      <div id="conta-kpi-factura" class="conta-kpi-value">0</div>
+    </div>
+    <div class="conta-kpi">
+      <div class="conta-kpi-label">Otros</div>
+      <div id="conta-kpi-otros" class="conta-kpi-value">0</div>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="table-card" style="margin-top:0">
+    <div class="table-filters" style="flex-wrap:wrap;gap:8px">
+      <input id="conta-search" type="text"
+             placeholder="🔍 Buscar por folio, proveedor, concepto o categoría..."
+             class="input-filter" oninput="filterConta()">
+      <select id="conta-filter-tipo" class="select-filter" onchange="filterConta()">
+        <option value="">Todos los tipos</option>
+        <option>BOLETA</option>
+        <option>FACTURA</option>
+        <option>BOUCHER</option>
+        <option>OTRO</option>
+      </select>
+      <select id="conta-filter-cat" class="select-filter" onchange="filterConta()">
+        <option value="">Todas las categorías</option>
+      </select>
+      <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151">
+        <label style="font-size:13px;font-weight:400;margin:0">Desde</label>
+        <input id="conta-filter-desde" type="date" class="select-filter" onchange="filterConta()">
+        <label style="font-size:13px;font-weight:400;margin:0">Hasta</label>
+        <input id="conta-filter-hasta" type="date" class="select-filter" onchange="filterConta()">
+      </div>
+    </div>
+
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>N° Documento</th>
+            <th>Fecha</th>
+            <th>Tipo Doc.</th>
+            <th>Proveedor</th>
+            <th>Categoría</th>
+            <th>Concepto</th>
+            <th>Empleado</th>
+            <th>Total</th>
+            <th>Autorizado por</th>
+            <th>Archivos</th>
+          </tr>
+        </thead>
+        <tbody id="conta-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Resumen por categoría -->
+  <div style="margin-top:24px;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+    <div class="table-card">
+      <div style="padding:16px 18px;font-size:14px;font-weight:700;border-bottom:1px solid #f3f4f6">
+        Gasto por Categoría
+      </div>
+      <div id="conta-by-cat" style="padding:12px 0"></div>
+    </div>
+    <div class="table-card">
+      <div style="padding:16px 18px;font-size:14px;font-weight:700;border-bottom:1px solid #f3f4f6">
+        Gasto por Tipo de Documento
+      </div>
+      <div id="conta-by-tipo" style="padding:12px 0"></div>
+    </div>
+  </div>
+</div>
