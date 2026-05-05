@@ -45,7 +45,12 @@ function showView(id) {
 function goBack() { showView(state.prevView || 'view-dashboard'); }
 
 const fmt     = n => '$' + Number(n).toLocaleString('es-CL');
-const fmtDate = s => s ? new Date(s + 'T12:00:00').toLocaleDateString('es-CL') : '—';
+const fmtDate = s => {
+  if (!s) return '—';
+  const d = s.includes('T') ? s.split('T')[0] : s;
+  const parsed = new Date(d + 'T12:00:00');
+  return isNaN(parsed) ? s : parsed.toLocaleDateString('es-CL');
+};
 
 function badge(status) {
   const cls = {

@@ -25,7 +25,7 @@ function _rowToExpense(row, rowIndex) {
   return {
     rowIndex,
     timestamp:     row[0]  || '',
-    fechaGasto:    row[1]  || '',
+    fechaGasto:    (row[1] ? String(row[1]).split('T')[0] : ''),
     email:        (row[2]  || '').toLowerCase(),
     title:         row[3]  || '',
     category:      row[4]  || '',
