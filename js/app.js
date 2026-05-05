@@ -15,6 +15,12 @@ const state = {
 // ─── Helpers DOM ──────────────────────────────
 const $ = id => document.getElementById(id);
 const _isAdmin = () => state.role === 'ADMIN' || state.role === 'SUPERADMIN';
+const _canViewAllCompanies = () => {
+  if (_isAdmin()) return true;
+  const email = (getCurrentUser()?.email || '').toLowerCase();
+  const userKey = email.split('@')[0];
+  return state.role === 'GERENTE' && userKey === 'mmoreno';
+};
 const _getUserName = email => {
   const u = state.users.find(u => u.email === (email || '').toLowerCase());
   return u?.displayName || email || '—';
@@ -1404,7 +1410,7 @@ async function navReportes() {
     _mergeExpenses(all);
 
     // Filtro empresa: GERENTE solo ve la suya
-    const esGerente = state.role === 'GERENTE';
+    const esGerente = state.role === 'GERENTE' && !_canViewAllCompanies();
     const empWrap   = $('rep-empresa-wrap');
     if (empWrap) empWrap.classList.toggle('hidden', esGerente);
 
@@ -1433,7 +1439,7 @@ async function navReportes() {
 }
 
 function renderReportes() {
-  const empresa = state.role === 'GERENTE'
+  const empresa = (state.role === 'GERENTE' && !_canViewAllCompanies())
     ? state.empresaUsuario
     : ($('rep-empresa')?.value || '');
   const desde  = $('rep-desde')?.value  || '';
@@ -1483,7 +1489,7 @@ function renderReportes() {
   _drawChart('chart-mensual', 'line', mesLabels, mesLabels.map(k => byMes[k]), [palette[0]]);
 
   // ── Gráfica: por empresa (solo admin) ──
-  if (state.role !== 'GERENTE') {
+  if (state.role !== 'GERENTE' || _canViewAllCompanies()) {
     const byEmp = {};
     exps.forEach(e => { const k = e.empresa || 'Sin empresa'; byEmp[k] = (byEmp[k] || 0) + e.total; });
     _drawChart('chart-empresas', 'bar', Object.keys(byEmp), Object.values(byEmp), palette);
