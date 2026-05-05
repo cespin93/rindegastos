@@ -192,7 +192,8 @@ function _renderFondoFijo(exps) {
   const email = getCurrentUser()?.email?.toLowerCase();
   const now   = new Date();
   const mes   = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const fondo = (state.fondoFijo || []).find(f => f.email === email && f.month === mes);
+  console.log('[FF] email:', email, '| mes:', mes, '| fondos:', JSON.stringify(state.fondoFijo));
+  const fondo = (state.fondoFijo || []).find(f => f.email === email && f.month.substring(0, 7) === mes);
 
   if (!fondo || _isAdmin()) {
     widget.classList.add('hidden');
