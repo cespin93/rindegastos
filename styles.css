@@ -13,8 +13,11 @@ main { flex: 1; overflow-y: auto; }
 /* ── Sidebar ── */
 aside {
   width: 220px; flex-shrink: 0;
-  background: #1e3a8a; color: #fff;
+  color: #fff;
   display: flex; flex-direction: column;
+  background-color: #1e3a8a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='110'%3E%3Ctext x='100' y='65' text-anchor='middle' transform='rotate(-30 100 55)' fill='white' fill-opacity='0.055' font-size='15' font-family='Arial,sans-serif' font-weight='800' letter-spacing='3'%3ERINDEGASTOS%3C%2Ftext%3E%3C%2Fsvg%3E");
+  background-repeat: repeat;
 }
 .sidebar-logo {
   padding: 20px 18px; font-size: 16px; font-weight: 700;
@@ -73,7 +76,12 @@ nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2p
 /* ── Login ── */
 #login-screen {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+  background-color: #1e3a8a;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='130'%3E%3Ctext x='120' y='75' text-anchor='middle' transform='rotate(-30 120 65)' fill='white' fill-opacity='0.07' font-size='17' font-family='Arial,sans-serif' font-weight='800' letter-spacing='3'%3ERINDEGASTOS%3C%2Ftext%3E%3C%2Fsvg%3E"),
+    linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+  background-repeat: repeat, no-repeat;
+  background-size: auto, cover;
 }
 .login-card {
   background: #fff; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,.2);
