@@ -113,8 +113,10 @@ async function openReceipt(r) {
     }
   } catch (e) {
     console.warn('[Rindegastos] no se pudo cargar el adjunto inline:', e.message);
+    toast('No se pudo mostrar el adjunto dentro de la app: ' + e.message, 'error');
+    return;
   }
-  openFileViewer(r);
+  toast('El adjunto no tiene un identificador válido para mostrarse.', 'error');
 }
 
 const fmt     = n => '$' + Number(n).toLocaleString('es-CL');
