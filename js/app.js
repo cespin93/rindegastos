@@ -80,6 +80,23 @@ function closeFileViewer() {
   document.body.style.overflow = '';
 }
 
+async function openReceipt(r) {
+  if (!r) return;
+  let accessUrl = r.url;
+  try {
+    if (r.id) {
+      const res = await callBackend('ensureReceiptAccess', { fileId: r.id });
+      accessUrl = res?.url || accessUrl;
+    }
+  } catch (e) {
+    console.warn('[Rindegastos] no se pudo garantizar acceso al adjunto:', e.message);
+  }
+  const win = window.open(accessUrl || r.url, '_blank', 'noopener');
+  if (!win) {
+    toast('El navegador bloqueó la apertura del adjunto. Usa el botón de abrir en una nueva pestaña.', 'info');
+  }
+}
+
 const fmt     = n => '$' + Number(n).toLocaleString('es-CL');
 const fmtDate = s => {
   if (!s) return '—';
@@ -615,7 +632,7 @@ function openDetail(rowIndex, context) {
 
   $('d-receipts').innerHTML = e.receipts?.length
     ? e.receipts.map(r => `
-        <button class="receipt-link" onclick='openFileViewer(${JSON.stringify(r)})'>
+        <button class="receipt-link" onclick='openReceipt(${JSON.stringify(r)})'>
           ${_receiptIcon(r.mime)} ${r.name}
         </button>`).join('')
     : '<p class="text-muted">Sin archivos adjuntos</p>';
