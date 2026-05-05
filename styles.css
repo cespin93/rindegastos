@@ -105,6 +105,30 @@ nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2p
   border: 1px solid #fecaca; text-align: left;
 }
 
+/* ── Reportes ── */
+.rep-filters {
+  display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;
+  background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+  padding:16px 20px; margin-bottom:20px;
+}
+.rep-filters > div { display:flex; flex-direction:column; gap:4px; }
+.rep-kpis {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:20px;
+}
+.rep-kpi {
+  background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+  padding:18px 20px;
+}
+.rep-kpi-label { font-size:12px; color:#6b7280; font-weight:600; margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em; }
+.rep-kpi-value { font-size:24px; font-weight:800; color:#1e3a8a; }
+.rep-charts-row { display:flex; gap:20px; margin-bottom:20px; flex-wrap:wrap; }
+.rep-chart-card {
+  flex:1; min-width:280px; background:#fff; border:1px solid #e5e7eb;
+  border-radius:12px; padding:20px 24px;
+}
+.rep-chart-title { font-size:14px; font-weight:700; color:#374151; margin-bottom:16px; }
+@media(max-width:700px) { .rep-kpis { grid-template-columns:repeat(2,1fr); } }
+
 /* ── Tutorial ── */
 .tut-card {
   background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:20px 24px;

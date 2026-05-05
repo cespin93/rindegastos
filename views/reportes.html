@@ -1,0 +1,85 @@
+<div id="view-reportes" class="view hidden">
+  <div class="page-header">
+    <h2 class="page-title">📈 Reportes</h2>
+    <button class="btn-secondary" onclick="navReportes()">↻ Actualizar</button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="rep-filters">
+    <div id="rep-empresa-wrap">
+      <label style="font-size:12px;color:#6b7280;font-weight:600">Empresa</label>
+      <select id="rep-empresa" class="select-filter" onchange="renderReportes()">
+        <option value="">Todas</option>
+      </select>
+    </div>
+    <div>
+      <label style="font-size:12px;color:#6b7280;font-weight:600">Desde</label>
+      <input type="month" id="rep-desde" class="select-filter" onchange="renderReportes()">
+    </div>
+    <div>
+      <label style="font-size:12px;color:#6b7280;font-weight:600">Hasta</label>
+      <input type="month" id="rep-hasta" class="select-filter" onchange="renderReportes()">
+    </div>
+    <div>
+      <label style="font-size:12px;color:#6b7280;font-weight:600">Estado</label>
+      <select id="rep-estado" class="select-filter" onchange="renderReportes()">
+        <option value="">Todos</option>
+        <option value="AUTORIZADO">Autorizado</option>
+        <option value="APROBADO">Aprobado</option>
+        <option value="PENDIENTE">Pendiente</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="rep-kpis">
+    <div class="rep-kpi">
+      <div class="rep-kpi-label">Total gastado</div>
+      <div class="rep-kpi-value" id="rep-total">$0</div>
+    </div>
+    <div class="rep-kpi">
+      <div class="rep-kpi-label">N° rendiciones</div>
+      <div class="rep-kpi-value" id="rep-count">0</div>
+    </div>
+    <div class="rep-kpi">
+      <div class="rep-kpi-label">Promedio por rendición</div>
+      <div class="rep-kpi-value" id="rep-avg">$0</div>
+    </div>
+    <div class="rep-kpi">
+      <div class="rep-kpi-label">Empleados activos</div>
+      <div class="rep-kpi-value" id="rep-empleados">0</div>
+    </div>
+  </div>
+
+  <!-- Gráficas fila 1 -->
+  <div class="rep-charts-row">
+    <div class="rep-chart-card">
+      <div class="rep-chart-title">Gasto por Categoría</div>
+      <div style="position:relative;height:280px">
+        <canvas id="chart-categorias"></canvas>
+      </div>
+    </div>
+    <div class="rep-chart-card">
+      <div class="rep-chart-title">Gasto por Centro de Costo</div>
+      <div style="position:relative;height:280px">
+        <canvas id="chart-centros"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gráficas fila 2 -->
+  <div class="rep-charts-row">
+    <div class="rep-chart-card" style="flex:2">
+      <div class="rep-chart-title">Evolución mensual</div>
+      <div style="position:relative;height:260px">
+        <canvas id="chart-mensual"></canvas>
+      </div>
+    </div>
+    <div class="rep-chart-card" id="rep-empresa-chart-wrap">
+      <div class="rep-chart-title">Gasto por Empresa</div>
+      <div style="position:relative;height:260px">
+        <canvas id="chart-empresas"></canvas>
+      </div>
+    </div>
+  </div>
+</div>

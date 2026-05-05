@@ -39,11 +39,12 @@ function _rowToExpense(row, rowIndex) {
     docNumber:     row[14] || '',
     provider:      row[15] || '',
     batchName:     row[16] || '',
-    costCenter:    row[17] || ''
+    costCenter:    row[17] || '',
+    empresa:       row[18] || ''
   };
 }
 
-function _expenseToRow(exp, userEmail) {
+function _expenseToRow(exp, userEmail, empresa) {
   return [
     new Date().toISOString(), // A TimestampCreacion
     exp.fechaGasto,           // B FechaGasto
@@ -61,7 +62,8 @@ function _expenseToRow(exp, userEmail) {
     exp.docNumber  || '',     // O DocumentNumber
     exp.provider   || '',     // P Provider
     exp.batchName  || '',     // Q BatchName
-    exp.costCenter || ''      // R CostCenter
+    exp.costCenter || '',     // R CostCenter
+    empresa        || ''      // S Empresa
   ];
 }
 
@@ -69,12 +71,12 @@ function _tryJson(str, def) { try { return JSON.parse(str); } catch { return def
 
 // ─── CRUD Gastos ─────────────────────────────
 async function getExpenses() {
-  const rows = await sheetsGet('Rendiciones!A2:R');
+  const rows = await sheetsGet('Rendiciones!A2:S');
   return rows.map((r, i) => _rowToExpense(r, i + 2));
 }
 
-async function addExpense(exp, userEmail) {
-  return sheetsAppend('Rendiciones', _expenseToRow(exp, userEmail));
+async function addExpense(exp, userEmail, empresa) {
+  return sheetsAppend('Rendiciones', _expenseToRow(exp, userEmail, empresa));
 }
 
 async function updateExpenseStatus(rowIndex, status, observations, approverEmail) {
@@ -92,9 +94,19 @@ async function getCategories() {
   return rows.map(r => r[0]).filter(Boolean);
 }
 
-async function getCostCenters() {
-  const rows = await sheetsGet('CentrosCosto!A2:A');
-  return rows.map(r => r[0]).filter(Boolean);
+async function getCostCenters(empresa) {
+  const rows = await sheetsGet('CentrosCosto!A2:B');
+  return rows
+    .map(r => ({ name: r[0] || '', empresa: (r[1] || '').trim() }))
+    .filter(r => r.name && (!empresa || !r.empresa || r.empresa === empresa))
+    .map(r => r.name);
+}
+
+async function getEmpresas() {
+  const rows = await sheetsGet('Empresas Grupo!A2:B');
+  return rows
+    .map(r => ({ nombre: (r[0] || '').trim(), rut: (r[1] || '').trim() }))
+    .filter(e => e.nombre);
 }
 
 async function _ensureSheet(title) {
@@ -133,8 +145,8 @@ async function deleteFondoFijo(rowIndex) {
 }
 
 async function getUsers() {
-  // Columnas A-F: email, rol, nombre, apellido, (contraseña se omite), notifyEmail
-  const rows = await sheetsGet('Usuarios!A2:F');
+  // Columnas A-G: email, rol, nombre, apellido, (contraseña se omite), notifyEmail, empresa
+  const rows = await sheetsGet('Usuarios!A2:G');
   return rows
     .map(r => {
       const nombre   = r[2] || '';
@@ -146,7 +158,8 @@ async function getUsers() {
         nombre,
         apellido,
         displayName: (nombre || apellido) ? `${nombre} ${apellido}`.trim() : email,
-        notifyEmail: (r[5] || '').trim()
+        notifyEmail: (r[5] || '').trim(),
+        empresa:     (r[6] || '').trim()
       };
     })
     .filter(u => u.email);

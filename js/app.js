@@ -3,7 +3,10 @@ const state = {
   role:           null,  // RENDIDOR | APROBADOR | GERENTE | ADMIN
   expenses:       [],
   categories:     [],
+  costCenters:    [],
   users:          [],
+  empresas:       [],
+  empresaUsuario: '',    // empresa del usuario logueado
   currentExpense: null,
   prevView:       null,
   detailContext:  null   // 'dashboard' | 'approvals' | 'gerencia'
@@ -110,7 +113,13 @@ async function onSignIn(user) {
       el.classList.toggle('hidden', !roles.includes(state.role));
     });
 
-    await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers(), _loadFondoFijo()]);
+    // Guardar empresa del usuario logueado
+    const userObj = state.users.length
+      ? state.users.find(u => u.email === user.email?.toLowerCase())
+      : null;
+    state.empresaUsuario = user.empresa || userObj?.empresa || '';
+
+    await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers(), _loadFondoFijo(), _loadEmpresas()]);
 
     $('login-screen').classList.add('hidden');
     $('app-screen').classList.remove('hidden');
@@ -136,8 +145,12 @@ async function _loadCategories() {
 }
 
 async function _loadCostCenters() {
-  state.costCenters = await getCostCenters();
+  state.costCenters = await getCostCenters(state.empresaUsuario);
   _fillSelect('form-cost-center', state.costCenters.map(c => ({ val: c, label: c })), '— Centro de Costo —');
+}
+
+async function _loadEmpresas() {
+  state.empresas = await getEmpresas();
 }
 
 async function _loadFondoFijo() {
@@ -147,6 +160,8 @@ async function _loadFondoFijo() {
 async function _loadUsers() {
   state.users = await getUsers();
   const currentEmail = getCurrentUser()?.email?.toLowerCase();
+  const me = state.users.find(u => u.email === currentEmail);
+  if (me?.empresa) state.empresaUsuario = me.empresa;
   const approvers = state.users.filter(u =>
     (u.role === 'APROBADOR' || u.role === 'ADMIN' || u.role === 'SUPERADMIN') &&
     u.email !== currentEmail
@@ -989,7 +1004,7 @@ async function submitExpense(ev) {
   }
   loading(true);
   try {
-    await addExpense(exp, getCurrentUser().email);
+    await addExpense(exp, getCurrentUser().email, state.empresaUsuario);
     await addAudit('CREAR', getCurrentUser().email, { title: exp.title, total: exp.total });
     toast('Rendición registrada exitosamente', 'success');
     window._receipts = [];
@@ -1190,7 +1205,7 @@ async function submitBulk() {
   loading(true);
   try {
     for (const exp of expenses) {
-      await addExpense(exp, userEmail);
+      await addExpense(exp, userEmail, state.empresaUsuario);
     }
     await addAudit('CREAR_CONJUNTO', userEmail, { batchName, count: expenses.length });
     toast(`Conjunto "${batchName}" registrado con ${expenses.length} rendiciones`, 'success');
@@ -1201,6 +1216,153 @@ async function submitBulk() {
   } finally {
     loading(false);
   }
+}
+
+// ─── REPORTES ─────────────────────────────────
+const _repCharts = {};
+
+async function navReportes() {
+  const mc = $('main-content');
+  if (!$('view-reportes')) {
+    const html = await fetch('./views/reportes.html').then(r => r.text());
+    mc.insertAdjacentHTML('beforeend', html);
+  }
+  showView('view-reportes');
+  loading(true);
+  try {
+    const all = await getExpenses();
+    _mergeExpenses(all);
+
+    // Filtro empresa: GERENTE solo ve la suya
+    const esGerente = state.role === 'GERENTE';
+    const empWrap   = $('rep-empresa-wrap');
+    if (empWrap) empWrap.classList.toggle('hidden', esGerente);
+
+    const empSel = $('rep-empresa');
+    if (empSel && !esGerente) {
+      empSel.innerHTML = '<option value="">Todas</option>' +
+        state.empresas.map(e => `<option value="${e.nombre}">${e.nombre}</option>`).join('');
+    }
+
+    // Gráfica por empresa: solo ADMIN/SUPERADMIN
+    const empChart = $('rep-empresa-chart-wrap');
+    if (empChart) empChart.classList.toggle('hidden', esGerente);
+
+    // Fechas por defecto: últimos 6 meses
+    const now   = new Date();
+    const hasta = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const desde = (() => {
+      const d = new Date(now); d.setMonth(d.getMonth() - 5);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    })();
+    if ($('rep-desde') && !$('rep-desde').value) $('rep-desde').value = desde;
+    if ($('rep-hasta') && !$('rep-hasta').value) $('rep-hasta').value = hasta;
+
+    renderReportes();
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+function renderReportes() {
+  const empresa = state.role === 'GERENTE'
+    ? state.empresaUsuario
+    : ($('rep-empresa')?.value || '');
+  const desde  = $('rep-desde')?.value  || '';
+  const hasta  = $('rep-hasta')?.value  || '';
+  const estado = $('rep-estado')?.value || '';
+
+  let exps = state.expenses.filter(e => {
+    if (empresa && e.empresa !== empresa) return false;
+    if (estado  && e.status  !== estado)  return false;
+    const mes = (e.fechaGasto || '').substring(0, 7);
+    if (desde && mes < desde) return false;
+    if (hasta && mes > hasta) return false;
+    return true;
+  });
+
+  // KPIs
+  const total    = exps.reduce((s, e) => s + e.total, 0);
+  const count    = exps.length;
+  const avg      = count ? Math.round(total / count) : 0;
+  const empleados = new Set(exps.map(e => e.email)).size;
+  $('rep-total').textContent    = fmt(total);
+  $('rep-count').textContent    = count;
+  $('rep-avg').textContent      = fmt(avg);
+  $('rep-empleados').textContent = empleados;
+
+  // Paleta
+  const palette = ['#1e40af','#7c3aed','#0891b2','#16a34a','#d97706','#dc2626','#6b7280','#0d9488','#9333ea','#ea580c'];
+
+  // ── Gráfica: por categoría ──
+  const byCat = {};
+  exps.forEach(e => { byCat[e.category || 'Sin categoría'] = (byCat[e.category || 'Sin categoría'] || 0) + e.total; });
+  _drawChart('chart-categorias', 'doughnut', Object.keys(byCat), Object.values(byCat), palette);
+
+  // ── Gráfica: por centro de costo ──
+  const byCC = {};
+  exps.forEach(e => { if (e.costCenter) byCC[e.costCenter] = (byCC[e.costCenter] || 0) + e.total; });
+  const ccLabels = Object.keys(byCC).sort((a, b) => byCC[b] - byCC[a]);
+  _drawChart('chart-centros', 'bar', ccLabels, ccLabels.map(k => byCC[k]), palette, true);
+
+  // ── Gráfica: evolución mensual ──
+  const byMes = {};
+  exps.forEach(e => {
+    const m = (e.fechaGasto || '').substring(0, 7);
+    if (m) byMes[m] = (byMes[m] || 0) + e.total;
+  });
+  const mesLabels = Object.keys(byMes).sort();
+  _drawChart('chart-mensual', 'line', mesLabels, mesLabels.map(k => byMes[k]), [palette[0]]);
+
+  // ── Gráfica: por empresa (solo admin) ──
+  if (state.role !== 'GERENTE') {
+    const byEmp = {};
+    exps.forEach(e => { const k = e.empresa || 'Sin empresa'; byEmp[k] = (byEmp[k] || 0) + e.total; });
+    _drawChart('chart-empresas', 'bar', Object.keys(byEmp), Object.values(byEmp), palette);
+  }
+}
+
+function _drawChart(id, type, labels, data, palette, horizontal = false) {
+  const canvas = $(id);
+  if (!canvas) return;
+  if (_repCharts[id]) { _repCharts[id].destroy(); }
+
+  const colors = labels.map((_, i) => palette[i % palette.length]);
+
+  _repCharts[id] = new Chart(canvas, {
+    type,
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: type === 'line' ? 'rgba(30,64,175,.12)' : colors,
+        borderColor:     type === 'line' ? palette[0] : colors,
+        borderWidth:     type === 'line' ? 2 : 0,
+        fill:            type === 'line',
+        tension:         0.4,
+        pointRadius:     type === 'line' ? 4 : 0
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      indexAxis: horizontal ? 'y' : 'x',
+      plugins: {
+        legend: { display: type === 'doughnut', position: 'bottom',
+          labels: { font: { size: 11 }, padding: 12, boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.raw || 0;
+              return ' $' + Number(v).toLocaleString('es-CL');
+            }
+          }
+        }
+      },
+      scales: type !== 'doughnut' ? {
+        x: { grid: { display: !horizontal }, ticks: { font: { size: 11 } } },
+        y: { grid: { display: horizontal },  ticks: { font: { size: 11 },
+          callback: v => horizontal ? v : '$' + Number(v).toLocaleString('es-CL') } }
+      } : {}
+    }
+  });
 }
 
 // ─── TUTORIAL ─────────────────────────────────
@@ -1285,9 +1447,17 @@ async function _loadAdminUsers() {
           <td class="td">
             ${canEdit
               ? `<input type="email" value="${u.notifyEmail || ''}" placeholder="correo@empresa.com"
-                   class="input-field" style="width:190px;margin:0;font-size:12px"
+                   class="input-field" style="width:170px;margin:0;font-size:12px"
                    onblur="saveNotifyEmail(${i+2}, this.value)">`
               : (u.notifyEmail || '—')}
+          </td>
+          <td class="td">
+            ${canEdit
+              ? `<select class="select-sm" onchange="saveEmpresaUsuario(${i+2}, this.value)">
+                  <option value="">— Sin empresa —</option>
+                  ${state.empresas.map(e => `<option value="${e.nombre}" ${u.empresa===e.nombre?'selected':''}>${e.nombre}</option>`).join('')}
+                </select>`
+              : (u.empresa || '—')}
           </td>
           <td class="td">
             ${canEdit
@@ -1301,7 +1471,7 @@ async function _loadAdminUsers() {
           </td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="7" class="empty-row">Sin usuarios registrados</td></tr>';
+    : '<tr><td colspan="8" class="empty-row">Sin usuarios registrados</td></tr>';
 }
 
 async function addUser() {
@@ -1315,13 +1485,23 @@ async function addUser() {
   const password    = prompt('Contraseña inicial:')?.trim();
   if (!password) { toast('Debes ingresar una contraseña', 'error'); return; }
   const notifyEmail = prompt('Email para notificaciones (dejar vacío si el login ya es un email):')?.trim() || '';
+  const empresaOpts = state.empresas.map(e => e.nombre).join(' / ');
+  const empresa     = prompt(`Empresa (${empresaOpts || 'nombre empresa'}):`)?.trim() || '';
   loading(true);
   try {
-    await sheetsAppend('Usuarios', [email, role, nombre, apellido, password, notifyEmail]);
+    await sheetsAppend('Usuarios', [email, role, nombre, apellido, password, notifyEmail, empresa]);
     state.users = await getUsers();
     await _loadAdminUsers();
     toast('Usuario agregado', 'success');
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function saveEmpresaUsuario(rowIndex, value) {
+  try {
+    await sheetsBatchUpdate([{ range: `Usuarios!G${rowIndex}`, values: [[value]] }]);
+    state.users = await getUsers();
+    toast(value ? `Empresa asignada: ${value}` : 'Empresa eliminada', 'success');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function saveNotifyEmail(rowIndex, value) {

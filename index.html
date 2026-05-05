@@ -58,6 +58,9 @@
       <button class="nav-btn" data-role="ADMIN,SUPERADMIN" data-view="view-admin" onclick="navAdmin()">
         ⚙️ Administración
       </button>
+      <button class="nav-btn" data-role="GERENTE,ADMIN,SUPERADMIN" data-view="view-reportes" onclick="navReportes()">
+        📈 Reportes
+      </button>
       <button class="nav-btn" data-view="view-tutorial" onclick="navTutorial()" style="margin-top:auto">
         📖 Tutorial
       </button>
@@ -94,6 +97,7 @@
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="./js/config.js"></script>
 <script src="./js/auth.js"></script>
 <script src="./js/api.js"></script>
