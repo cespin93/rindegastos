@@ -2006,7 +2006,7 @@ function _renderConta(exps) {
         <td class="td td-muted" style="font-size:12px">${_getUserName(e.approverEmail)}</td>
         <td class="td">
           ${e.receipts?.length
-            ? e.receipts.map(r => `<a href="${r.url}" target="_blank" class="conta-file-link">📎</a>`).join(' ')
+            ? e.receipts.map(r => `<button type="button" class="conta-file-link" style="background:none;border:none;cursor:pointer" onclick='event.stopPropagation();openReceipt(${JSON.stringify(r)})'>📎</button>`).join(' ')
             : '<span class="text-muted">—</span>'}
         </td>
       </tr>`).join('');

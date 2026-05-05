@@ -8,7 +8,7 @@
 var SHEET_ID        = '1YCr7t4W0WMMRa4e_jS8vN4K8QNGrqYhgXxjakL4YJPU';
 var DRIVE_FOLDER_ID = '1F6BHuiP1p1d2-4Kil09VnNxYnF0SpaTn';
 var TOKEN_SECRET    = 'RGmymgroup2024secret'; // Cámbialo por algo único y secreto
-var APP_VERSION     = '2026-05-05-drive-diag-2';
+var APP_VERSION     = '2026-05-05-stable-1';
 
 // ─── Entry points ─────────────────────────────────────────────────────────────
 
