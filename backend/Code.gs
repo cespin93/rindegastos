@@ -8,6 +8,7 @@
 var SHEET_ID        = '1YCr7t4W0WMMRa4e_jS8vN4K8QNGrqYhgXxjakL4YJPU';
 var DRIVE_FOLDER_ID = '1F6BHuiP1p1d2-4Kil09VnNxYnF0SpaTn';
 var TOKEN_SECRET    = 'RGmymgroup2024secret'; // Cámbialo por algo único y secreto
+var APP_VERSION     = '2026-05-05-drive-diag-2';
 
 // ─── Entry points ─────────────────────────────────────────────────────────────
 
@@ -57,6 +58,15 @@ function _handleBody(body) {
   var token  = body.token;
   var params = body.params || {};
 
+  if (action === 'healthcheck') {
+    return _healthcheck();
+  }
+  if (action === 'driveCheck') {
+    return _driveCheck();
+  }
+  if (action === 'uploadProbe') {
+    return _uploadProbe();
+  }
   if (action === 'login') {
     return _handleLogin(params.email, params.password);
   }
@@ -92,6 +102,9 @@ function _dispatch(action, params, user) {
     case 'getReceiptContent':
       return _getReceiptContent(params.fileId, user);
 
+    case 'ensureReceiptAccess':
+      return _ensureReceiptAccess(params.fileId, user);
+
     case 'sendEmail':
       _sendEmail(params.to, params.subject, params.htmlBody);
       return { ok: true };
@@ -105,6 +118,80 @@ function _dispatch(action, params, user) {
 
     default:
       return { error: 'Acción desconocida: ' + action };
+  }
+}
+
+function _healthcheck() {
+  return {
+    ok: true,
+    version: APP_VERSION,
+    timestamp: new Date().toISOString()
+  };
+}
+
+function _driveCheck() {
+  try {
+    var folder = _getUploadFolder();
+    return {
+      ok: true,
+      version: APP_VERSION,
+      folderId: folder.getId(),
+      folderName: folder.getName()
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      version: APP_VERSION,
+      error: e.message || String(e)
+    };
+  }
+}
+
+function _uploadProbe() {
+  var probeName = 'upload-probe-' + new Date().getTime() + '.txt';
+  try {
+    var folder = _getUploadFolder();
+    var blob = Utilities.newBlob('ok', 'text/plain', probeName);
+    var file;
+    try {
+      file = folder.createFile(blob);
+    } catch (createErr) {
+      return {
+        ok: false,
+        version: APP_VERSION,
+        step: 'createFile',
+        error: createErr.message || String(createErr)
+      };
+    }
+
+    var sharing = 'private';
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      sharing = 'anyone_with_link';
+    } catch (publicErr) {
+      try {
+        file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+        sharing = 'domain_with_link';
+      } catch (domainErr) {
+        sharing = 'private';
+      }
+    }
+
+    return {
+      ok: true,
+      version: APP_VERSION,
+      step: 'done',
+      fileId: file.getId(),
+      fileName: file.getName(),
+      sharing: sharing
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      version: APP_VERSION,
+      step: 'folder',
+      error: e.message || String(e)
+    };
   }
 }
 
@@ -294,24 +381,93 @@ function _setPassword(rowIndex, password) {
 
 // ─── Drive ────────────────────────────────────────────────────────────────────
 
-function _uploadFile(name, base64data, mime) {
-  var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
-  var bytes  = Utilities.base64Decode(base64data);
-  var blob   = Utilities.newBlob(bytes, mime || 'application/octet-stream', name);
-  var file   = folder.createFile(blob);
-  // Intentar compartir con cualquiera; si la política del dominio lo bloquea,
-  // compartir solo dentro de la organización
+function _getUploadFolder() {
+  _assertDriveAccess();
   try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var folder = DriveApp.getFolderById(DRIVE_FOLDER_ID);
+    folder.getName();
+    return folder;
   } catch (e) {
-    file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+    Logger.log('DRIVE_FOLDER_ID inaccesible: ' + e.toString());
   }
-  return {
-    id:   file.getId(),
-    name: file.getName(),
-    url:  file.getUrl(),
-    mime: mime
-  };
+  var it = DriveApp.getFoldersByName('Rindegastos Archivos');
+  if (it.hasNext()) return it.next();
+  var created = DriveApp.createFolder('Rindegastos Archivos');
+  Logger.log('Folder creado: ' + created.getId() + ' — actualiza DRIVE_FOLDER_ID con este valor.');
+  return created;
+}
+
+function _assertDriveAccess() {
+  try {
+    DriveApp.getRootFolder().getId();
+  } catch (e) {
+    throw new Error(
+      'El backend no tiene permisos de Google Drive. Reautoriza el proyecto de Apps Script y vuelve a desplegar la Web App.'
+    );
+  }
+}
+
+function _uploadFile(name, base64data, mime) {
+  try {
+    var folder = _getUploadFolder();
+    var bytes  = Utilities.base64Decode(base64data);
+    var blob   = Utilities.newBlob(bytes, mime || 'application/octet-stream', name);
+    var file;
+    try {
+      file = folder.createFile(blob);
+    } catch (createErr) {
+      return {
+        error: 'No se pudo crear el archivo en Google Drive [' + APP_VERSION + ']: ' + (createErr.message || String(createErr))
+      };
+    }
+    var sharing = 'private';
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      sharing = 'anyone_with_link';
+    } catch (e) {
+      try {
+        file.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+        sharing = 'domain_with_link';
+      } catch (shareErr) {
+        Logger.log('No se pudo cambiar el sharing del archivo %s: %s', file.getName(), shareErr.toString());
+      }
+    }
+    return {
+      id:   file.getId(),
+      name: file.getName(),
+      url:  file.getUrl(),
+      mime: mime,
+      sharing: sharing
+    };
+  } catch (e) {
+    return {
+      error: 'No se pudo subir el archivo a Google Drive [' + APP_VERSION + ']: ' + (e.message || String(e))
+    };
+  }
+}
+
+function _ensureReceiptAccess(fileId, user) {
+  if (!fileId) {
+    return { error: 'fileId requerido' };
+  }
+  if (!user || !user.email) {
+    return { error: 'Usuario no autenticado' };
+  }
+  try {
+    var file = DriveApp.getFileById(fileId);
+    try {
+      file.addViewer(user.email);
+    } catch (viewerErr) {
+      Logger.log('No se pudo agregar viewer %s al archivo %s: %s', user.email, fileId, viewerErr.toString());
+    }
+    return {
+      ok: true,
+      fileId: file.getId(),
+      url: file.getUrl()
+    };
+  } catch (e) {
+    return { error: 'No se pudo dar acceso al adjunto: ' + (e.message || String(e)) };
+  }
 }
 
 // ─── Gmail ────────────────────────────────────────────────────────────────────
@@ -341,4 +497,12 @@ function _changeOwnPassword(email, currentPassword, newPassword) {
     return { ok: true };
   }
   return { error: 'Usuario no encontrado.' };
+}
+
+// ─── Test / Re-autorización ───────────────────────────────────────────────────
+function testDriveAccess() {
+  var root = DriveApp.getRootFolder();
+  Logger.log('Drive OK — Carpeta raíz: ' + root.getName());
+  var folder = _getUploadFolder();
+  Logger.log('Carpeta de subida: ' + folder.getName() + ' (' + folder.getId() + ')');
 }
