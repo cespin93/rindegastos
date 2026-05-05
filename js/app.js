@@ -917,6 +917,31 @@ async function autoFillFromReceipt() {
   }
 }
 
+function _getFondoDelMes(email) {
+  const now = new Date();
+  const mes = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const fondo = (state.fondoFijo || []).find(f =>
+    f.email === email && f.month.substring(0, 7) === mes
+  );
+  if (!fondo) return null;
+  const gastado = (state.expenses || [])
+    .filter(e => e.email === email && e.fechaGasto.startsWith(mes) && e.status !== 'RECHAZADO')
+    .reduce((s, e) => s + e.total, 0);
+  return { fondo: fondo.monto, gastado, saldo: fondo.monto - gastado };
+}
+
+// Retorna null si ok, 'warn' si supera 80%, 'block' si supera 100%
+function _checkFondoFijo(montoNuevo, extraGastado = 0) {
+  const email = getCurrentUser()?.email?.toLowerCase();
+  const ff = _getFondoDelMes(email);
+  if (!ff) return null;
+  const totalGastado = ff.gastado + extraGastado + montoNuevo;
+  const pct = totalGastado / ff.fondo;
+  if (pct > 1)    return { tipo: 'block', saldo: ff.saldo - extraGastado, pct: Math.round(pct * 100) };
+  if (pct >= 0.8) return { tipo: 'warn',  saldo: ff.saldo - extraGastado, pct: Math.round(pct * 100) };
+  return null;
+}
+
 function _checkDuplicateFolio(provider, docNumber, excludeExpenses = []) {
   if (!provider || !docNumber) return null;
   const prov = provider.trim().toLowerCase();
@@ -955,6 +980,14 @@ async function submitExpense(ev) {
   if (dup) {
     toast(`Folio "${exp.docNumber}" ya existe para el proveedor "${exp.provider}"`, 'error');
     return;
+  }
+  const ffCheck = _checkFondoFijo(exp.total);
+  if (ffCheck?.tipo === 'block') {
+    toast(`Sin saldo disponible. Saldo actual: ${fmt(Math.max(ffCheck.saldo, 0))}`, 'error');
+    return;
+  }
+  if (ffCheck?.tipo === 'warn') {
+    if (!confirm(`Esta rendición llevará tu fondo al ${ffCheck.pct}% (${fmt(ffCheck.saldo - exp.total)} disponible tras registrar). ¿Continuar?`)) return;
   }
   loading(true);
   try {
@@ -1145,6 +1178,17 @@ async function submitBulk() {
       return;
     }
     if (exp.provider && exp.docNumber) seen.push(exp);
+  }
+
+  // Validate fondo fijo for the full batch total
+  const bulkTotal  = expenses.reduce((s, e) => s + e.total, 0);
+  const ffBulk     = _checkFondoFijo(bulkTotal);
+  if (ffBulk?.tipo === 'block') {
+    toast(`Sin saldo suficiente para el conjunto. Saldo disponible: ${fmt(Math.max(ffBulk.saldo, 0))}`, 'error');
+    return;
+  }
+  if (ffBulk?.tipo === 'warn') {
+    if (!confirm(`Este conjunto llevará tu fondo al ${ffBulk.pct}%. ¿Continuar?`)) return;
   }
 
   loading(true);
