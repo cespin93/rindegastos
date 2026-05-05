@@ -1286,6 +1286,22 @@ async function saveNotifyEmail(rowIndex, value) {
   } catch (e) { toast(e.message, 'error'); }
 }
 
+async function changeOwnPassword() {
+  const current = prompt('Contraseña actual:');
+  if (current === null) return;
+  const newPass = prompt('Nueva contraseña (mínimo 6 caracteres):');
+  if (newPass === null) return;
+  const confirm_ = prompt('Repite la nueva contraseña:');
+  if (confirm_ === null) return;
+  if (newPass !== confirm_) { toast('Las contraseñas no coinciden', 'error'); return; }
+  loading(true);
+  try {
+    const res = await callBackend('changeOwnPassword', { currentPassword: current, newPassword: newPass });
+    if (!res.ok) throw new Error(res.error);
+    toast('Contraseña actualizada correctamente', 'success');
+  } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
 async function changePassword(rowIndex) {
   const newPass = prompt('Nueva contraseña para este usuario:')?.trim();
   if (!newPass) return;

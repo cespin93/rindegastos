@@ -41,6 +41,12 @@ nav { flex: 1; padding: 12px 8px; display: flex; flex-direction: column; gap: 2p
 }
 #user-name  { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #user-email { font-size: 11px; color: rgba(255,255,255,.55); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-change-pass {
+  width: 100%; padding: 7px; border-radius: 7px; border: 1px solid rgba(255,255,255,.2);
+  background: transparent; color: rgba(255,255,255,.7); font-size: 12px; cursor: pointer;
+  transition: background .15s; margin-bottom: 6px;
+}
+.btn-change-pass:hover { background: rgba(255,255,255,.1); color: #fff; }
 .btn-signout {
   width: 100%; padding: 7px; border-radius: 7px; border: 1px solid rgba(255,255,255,.2);
   background: transparent; color: rgba(255,255,255,.7); font-size: 12px; cursor: pointer;
