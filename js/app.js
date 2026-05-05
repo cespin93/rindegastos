@@ -1138,6 +1138,9 @@ function addBulkRow() {
       <input type="text" class="input-field-sm" placeholder="Proveedor" style="width:130px">
     </td>
     <td class="bulk-td">
+      <input type="text" class="input-field-sm" placeholder="Notas" style="width:140px">
+    </td>
+    <td class="bulk-td">
       <label class="btn-upload-sm" style="cursor:pointer">
         📎 Subir
         <input type="file" multiple accept="image/*,.pdf"
@@ -1211,7 +1214,7 @@ async function submitBulk() {
     const inputs     = row.querySelectorAll('input, select');
     const id         = parseInt(row.id.replace('bulk-row-', ''));
     const textInputs = Array.from(inputs).filter(i => i.type !== 'file');
-    const [title, fechaGasto, total, category, costCenter, docType, docNumber, provider] =
+    const [title, fechaGasto, total, category, costCenter, docType, docNumber, provider, notes] =
       textInputs.map(i => i.value.trim());
 
     if (!title || !fechaGasto || !total || !category || !docType) {
@@ -1221,7 +1224,7 @@ async function submitBulk() {
     expenses.push({
       title, fechaGasto, total: parseFloat(total),
       category, costCenter, docType, docNumber, provider,
-      notes: '', approverEmail, batchName,
+      notes: notes || '', approverEmail, batchName,
       receipts: window._bulkReceipts.get(id) || []
     });
   }
