@@ -209,7 +209,7 @@ function _renderFondoFijo(exps) {
   const mesLabel  = now.toLocaleDateString('es-CL', { month: 'long', year: 'numeric' });
 
   $('ff-widget-label').textContent = excedente
-    ? `⚠️ Excedido ${fmt(Math.abs(saldo))}`
+    ? `🔴 Excedente ${fmt(Math.abs(saldo))}`
     : `💰 Disponible ${fmt(saldo)}`;
 
   $('ff-widget-content').innerHTML = `
@@ -983,11 +983,9 @@ async function submitExpense(ev) {
   }
   const ffCheck = _checkFondoFijo(exp.total);
   if (ffCheck?.tipo === 'block') {
-    toast(`Sin saldo disponible. Saldo actual: ${fmt(Math.max(ffCheck.saldo, 0))}`, 'error');
-    return;
-  }
-  if (ffCheck?.tipo === 'warn') {
-    if (!confirm(`Esta rendición llevará tu fondo al ${ffCheck.pct}% (${fmt(ffCheck.saldo - exp.total)} disponible tras registrar). ¿Continuar?`)) return;
+    if (!confirm(`Esta rendición excederá tu fondo asignado. Quedarás con un excedente de ${fmt(Math.abs(ffCheck.saldo - exp.total))}. ¿Continuar de todas formas?`)) return;
+  } else if (ffCheck?.tipo === 'warn') {
+    if (!confirm(`Esta rendición llevará tu fondo al ${ffCheck.pct}%. ¿Continuar?`)) return;
   }
   loading(true);
   try {
@@ -1184,10 +1182,8 @@ async function submitBulk() {
   const bulkTotal  = expenses.reduce((s, e) => s + e.total, 0);
   const ffBulk     = _checkFondoFijo(bulkTotal);
   if (ffBulk?.tipo === 'block') {
-    toast(`Sin saldo suficiente para el conjunto. Saldo disponible: ${fmt(Math.max(ffBulk.saldo, 0))}`, 'error');
-    return;
-  }
-  if (ffBulk?.tipo === 'warn') {
+    if (!confirm(`Este conjunto excederá tu fondo asignado. Quedarás con un excedente de ${fmt(Math.abs(ffBulk.saldo - bulkTotal))}. ¿Continuar de todas formas?`)) return;
+  } else if (ffBulk?.tipo === 'warn') {
     if (!confirm(`Este conjunto llevará tu fondo al ${ffBulk.pct}%. ¿Continuar?`)) return;
   }
 
