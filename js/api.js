@@ -133,8 +133,8 @@ async function deleteFondoFijo(rowIndex) {
 }
 
 async function getUsers() {
-  // Solo columnas A-D: email, rol, nombre, apellido (sin contraseña)
-  const rows = await sheetsGet('Usuarios!A2:D');
+  // Columnas A-F: email, rol, nombre, apellido, (contraseña se omite), notifyEmail
+  const rows = await sheetsGet('Usuarios!A2:F');
   return rows
     .map(r => {
       const nombre   = r[2] || '';
@@ -145,7 +145,8 @@ async function getUsers() {
         role:        r[1] || 'RENDIDOR',
         nombre,
         apellido,
-        displayName: (nombre || apellido) ? `${nombre} ${apellido}`.trim() : email
+        displayName: (nombre || apellido) ? `${nombre} ${apellido}`.trim() : email,
+        notifyEmail: (r[5] || '').trim()
       };
     })
     .filter(u => u.email);

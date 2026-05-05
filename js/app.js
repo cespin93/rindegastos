@@ -409,9 +409,9 @@ async function authorizeAll() {
       await updateExpenseStatus(e.rowIndex, 'AUTORIZADO', obs, user.email);
       e.status       = 'AUTORIZADO';
       e.observations = obs;
-      if (e.email.includes('@')) {
-        try { await sendReceipt(e, e.email); } catch (_) {}
-      }
+      const ownr      = state.users.find(u => u.email === e.email);
+      const notifyA   = ownr?.notifyEmail || (e.email.includes('@') ? e.email : null);
+      if (notifyA) { try { await sendReceipt(e, notifyA); } catch (_) {} }
     }
     await addAudit('AUTORIZAR_CONJUNTO', user.email, { batchName, count: list.length });
     toast(`${list.length} gastos autorizados. Abriendo informe...`, 'success');
@@ -620,9 +620,11 @@ async function doDecision(newStatus) {
 
     toast(`Rendición ${finalStatus.toLowerCase()} correctamente`, 'success');
 
-    // Notificar al rendidor si tiene email real
-    if (e.email.includes('@')) {
-      try { await sendReceipt(e, e.email); } catch (_) {}
+    // Notificar al rendidor (usa notifyEmail si está configurado, si no el email de login)
+    const owner       = state.users.find(u => u.email === e.email);
+    const notifyAddr  = owner?.notifyEmail || (e.email.includes('@') ? e.email : null);
+    if (notifyAddr) {
+      try { await sendReceipt(e, notifyAddr); } catch (_) {}
     }
     if (CONFIG.RECEIPTS_EMAIL) {
       try { await sendReceipt(e, CONFIG.RECEIPTS_EMAIL); } catch (_) {}
@@ -1232,6 +1234,13 @@ async function _loadAdminUsers() {
           </td>
           <td class="td">
             ${canEdit
+              ? `<input type="email" value="${u.notifyEmail || ''}" placeholder="correo@empresa.com"
+                   class="input-field" style="width:190px;margin:0;font-size:12px"
+                   onblur="saveNotifyEmail(${i+2}, this.value)">`
+              : (u.notifyEmail || '—')}
+          </td>
+          <td class="td">
+            ${canEdit
               ? `<button onclick="changePassword(${i+2})" class="btn-secondary" style="font-size:12px;padding:4px 10px">Cambiar clave</button>`
               : '—'}
           </td>
@@ -1242,26 +1251,39 @@ async function _loadAdminUsers() {
           </td>
         </tr>`;
       }).join('')
-    : '<tr><td colspan="6" class="empty-row">Sin usuarios registrados</td></tr>';
+    : '<tr><td colspan="7" class="empty-row">Sin usuarios registrados</td></tr>';
 }
 
 async function addUser() {
-  const email    = prompt('Email del nuevo usuario:')?.toLowerCase().trim();
+  const email    = prompt('Email o usuario de login:')?.toLowerCase().trim();
   if (!email) return;
   const nombre   = prompt('Nombre:')?.trim() || '';
   const apellido = prompt('Apellido:')?.trim() || '';
   const rolesDisp = state.role === 'SUPERADMIN' ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'SUPERADMIN');
   const role = prompt(`Rol (${rolesDisp.join(' / ')}):`, 'RENDIDOR')?.toUpperCase().trim();
   if (!rolesDisp.includes(role)) { toast('Rol inválido', 'error'); return; }
-  const password = prompt('Contraseña inicial para este usuario:')?.trim();
+  const password    = prompt('Contraseña inicial:')?.trim();
   if (!password) { toast('Debes ingresar una contraseña', 'error'); return; }
+  const notifyEmail = prompt('Email para notificaciones (dejar vacío si el login ya es un email):')?.trim() || '';
   loading(true);
   try {
-    await sheetsAppend('Usuarios', [email, role, nombre, apellido, password]);
+    await sheetsAppend('Usuarios', [email, role, nombre, apellido, password, notifyEmail]);
     state.users = await getUsers();
     await _loadAdminUsers();
     toast('Usuario agregado', 'success');
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
+}
+
+async function saveNotifyEmail(rowIndex, value) {
+  const email = value.trim();
+  if (email && !email.includes('@')) {
+    toast('Ingresa un email válido para notificaciones', 'error'); return;
+  }
+  try {
+    await sheetsBatchUpdate([{ range: `Usuarios!F${rowIndex}`, values: [[email]] }]);
+    state.users = await getUsers();
+    toast(email ? 'Email de notificación guardado' : 'Email de notificación eliminado', 'success');
+  } catch (e) { toast(e.message, 'error'); }
 }
 
 async function changePassword(rowIndex) {
