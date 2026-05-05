@@ -2,8 +2,8 @@
 
 ## Backend Apps Script
 
-1. Editar solo la copia activa de backend en `webapp/backend/Code.gs`.
-2. Mantener sincronizado `webapp/backend/appsscript.json` con los scopes requeridos:
+1. Editar la copia activa de backend solo en el proyecto operativo local `PROYECTO RINDEGASTOS EMPRESA/webapp/backend/Code.gs`.
+2. Mantener sincronizado el manifest operativo `PROYECTO RINDEGASTOS EMPRESA/webapp/backend/appsscript.json` con los scopes requeridos:
    - `https://www.googleapis.com/auth/spreadsheets`
    - `https://www.googleapis.com/auth/drive`
    - `https://www.googleapis.com/auth/gmail.send`
