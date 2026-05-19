@@ -95,6 +95,10 @@ function _formatFileSize(bytes) {
   return `${Math.round(size / 104857.6) / 10} MB`;
 }
 
+function _shouldShowDocPreviewPanel() {
+  return window.innerWidth > 640;
+}
+
 let _activeReceiptObjectUrl = null;
 
 function _base64ToBlob(base64, mime) {
@@ -1200,11 +1204,6 @@ async function handleFiles(input) {
   const preview = $('file-preview');
   const newFiles = Array.from(input.files);
 
-  // Mostrar preview inmediato del primer archivo (antes de subir)
-  if (newFiles.length > 0 && window._originalFiles.length === 0) {
-    _showDocPreviewFile(newFiles[0]);
-  }
-
   for (const file of newFiles) {
     const item = document.createElement('div');
     item.className = 'file-item file-uploading';
@@ -1236,6 +1235,11 @@ function _showDocPreviewFile(file) {
   const metaEl = $('doc-preview-meta');
   const openEl = $('doc-preview-open');
   if (!panel || !content || !file) return;
+  if (!_shouldShowDocPreviewPanel()) {
+    panel.classList.add('hidden');
+    _clearDocPreviewObjectUrl();
+    return;
+  }
   panel.classList.remove('hidden');
   _clearDocPreviewObjectUrl();
   const url = URL.createObjectURL(file);
@@ -1264,6 +1268,10 @@ function _updateDocPreview() {
   const nav = $('doc-preview-nav');
   const content = $('doc-preview-content');
   if (!panel || !content) return;
+  if (!_shouldShowDocPreviewPanel()) {
+    _setDocPreviewEmptyState();
+    return;
+  }
   const files = window._originalFiles;
   if (!files.length) {
     _setDocPreviewEmptyState();

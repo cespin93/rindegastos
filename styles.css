@@ -896,7 +896,10 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
     width: 100%;
   }
 
-  .doc-preview-panel,
+  .doc-preview-panel {
+    display: none !important;
+  }
+
   .detail-preview-panel {
     height: auto;
     min-height: 0;
