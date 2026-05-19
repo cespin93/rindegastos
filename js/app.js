@@ -78,6 +78,23 @@ function _receiptIcon(mime) {
   return '📎';
 }
 
+function _escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function _formatFileSize(bytes) {
+  const size = Number(bytes || 0);
+  if (!size) return 'Tamano no disponible';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 102.4) / 10} KB`;
+  return `${Math.round(size / 104857.6) / 10} MB`;
+}
+
 let _activeReceiptObjectUrl = null;
 
 function _base64ToBlob(base64, mime) {
@@ -1077,8 +1094,7 @@ async function navNewExpense() {
   window._receipts      = [];
   window._originalFiles = [];
   window._docPreviewIndex = 0;
-  const panel = $('doc-preview-panel');
-  if (panel) panel.classList.add('hidden');
+  _setDocPreviewEmptyState();
   const autofillBtn = $('autofill-btn-wrap');
   if (autofillBtn) autofillBtn.style.display = 'none';
   const batchNameInput = $('bulk-batch-name');
@@ -1092,6 +1108,66 @@ async function navNewExpense() {
 // ── Modo Individual ──
 window._receipts      = [];
 window._originalFiles = []; // archivos originales para OCR
+window._docPreviewObjectUrl = null;
+
+function _clearDocPreviewObjectUrl() {
+  if (window._docPreviewObjectUrl) {
+    URL.revokeObjectURL(window._docPreviewObjectUrl);
+    window._docPreviewObjectUrl = null;
+  }
+}
+
+function _setDocPreviewEmptyState() {
+  const panel = $('doc-preview-panel');
+  const content = $('doc-preview-content');
+  const nameEl = $('doc-preview-name');
+  const metaEl = $('doc-preview-meta');
+  const openEl = $('doc-preview-open');
+  const stripEl = $('doc-preview-strip');
+  if (panel) panel.classList.add('hidden');
+  if (content) {
+    content.innerHTML = '<span class="doc-preview-empty"><strong>Adjunta un documento</strong>Se mostrara aqui una vista previa mas clara del respaldo antes de registrar la rendicion.</span>';
+  }
+  if (nameEl) nameEl.textContent = 'Adjunta un documento';
+  if (metaEl) metaEl.textContent = 'Podras revisarlo aqui antes de registrar la rendicion.';
+  if (openEl) {
+    openEl.href = '#';
+    openEl.classList.add('hidden');
+  }
+  if (stripEl) {
+    stripEl.classList.add('hidden');
+    stripEl.innerHTML = '';
+  }
+  _clearDocPreviewObjectUrl();
+}
+
+function selectDocPreview(index) {
+  window._docPreviewIndex = index;
+  _updateDocPreview();
+}
+
+function _renderDocPreviewStrip(files) {
+  const stripEl = $('doc-preview-strip');
+  if (!stripEl) return;
+  if (!files.length) {
+    stripEl.classList.add('hidden');
+    stripEl.innerHTML = '';
+    return;
+  }
+  stripEl.classList.remove('hidden');
+  stripEl.innerHTML = files.map((file, index) => {
+    const activeClass = index === window._docPreviewIndex ? ' is-active' : '';
+    const typeLabel = (file.type || '').includes('pdf') ? 'PDF' : (file.type || '').startsWith('image/') ? 'Imagen' : 'Archivo';
+    return `
+      <button type="button" class="doc-preview-thumb${activeClass}" onclick="selectDocPreview(${index})">
+        <span class="doc-preview-thumb-icon">${_receiptIcon(file.type || '')}</span>
+        <span class="doc-preview-thumb-text">
+          <span class="doc-preview-thumb-name">${_escapeHtml(file.name || `Adjunto ${index + 1}`)}</span>
+          <span class="doc-preview-thumb-meta">${typeLabel} • ${_formatFileSize(file.size)}</span>
+        </span>
+      </button>`;
+  }).join('');
+}
 
 async function handleFiles(input) {
   const preview = $('file-preview');
@@ -1129,15 +1205,30 @@ window._docPreviewIndex = 0;
 function _showDocPreviewFile(file) {
   const panel = $('doc-preview-panel');
   const content = $('doc-preview-content');
-  if (!panel || !content) return;
+  const nameEl = $('doc-preview-name');
+  const metaEl = $('doc-preview-meta');
+  const openEl = $('doc-preview-open');
+  if (!panel || !content || !file) return;
   panel.classList.remove('hidden');
+  _clearDocPreviewObjectUrl();
   const url = URL.createObjectURL(file);
+  window._docPreviewObjectUrl = url;
+  if (nameEl) nameEl.textContent = file.name || 'Documento adjunto';
+  if (metaEl) {
+    const typeLabel = (file.type || '').includes('pdf') ? 'PDF' : (file.type || '').startsWith('image/') ? 'Imagen' : (file.type || 'Archivo');
+    metaEl.textContent = `${typeLabel} • ${_formatFileSize(file.size)} • ${window._docPreviewIndex + 1} de ${window._originalFiles.length}`;
+  }
+  if (openEl) {
+    openEl.href = url;
+    openEl.classList.remove('hidden');
+  }
   if (file.type.startsWith('image/')) {
-    content.innerHTML = `<img src="${url}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:6px">`;
+    content.innerHTML = `<div class="doc-preview-stage"><img src="${url}" alt="${_escapeHtml(file.name || 'Documento')}" loading="lazy"></div>`;
   } else if (file.type === 'application/pdf') {
-    _renderPdfWithLoader(content, url);
+    content.innerHTML = '<div class="doc-preview-stage"></div>';
+    _renderPdfWithLoader(content.firstElementChild, url);
   } else {
-    content.innerHTML = `<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:8px">📎</div><div style="font-size:13px;color:#6b7280">${file.name}</div></div>`;
+    content.innerHTML = `<div class="doc-preview-stage"><div style="text-align:center;padding:20px"><div style="font-size:54px;margin-bottom:10px">${_receiptIcon(file.type || '')}</div><div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:6px">${_escapeHtml(file.name || 'Documento adjunto')}</div><div style="font-size:12px;color:#64748b">No hay vista previa inline para este formato, pero puedes abrirlo completo.</div></div></div>`;
   }
 }
 
@@ -1148,7 +1239,7 @@ function _updateDocPreview() {
   if (!panel || !content) return;
   const files = window._originalFiles;
   if (!files.length) {
-    panel.classList.add('hidden');
+    _setDocPreviewEmptyState();
     return;
   }
   if (window._docPreviewIndex >= files.length) window._docPreviewIndex = files.length - 1;
@@ -1156,10 +1247,11 @@ function _updateDocPreview() {
     nav.innerHTML = files.length > 1 ? `
       <button onclick="_docPreviewGo(-1)" ${window._docPreviewIndex === 0 ? 'disabled' : ''}
               class="doc-nav-btn">‹</button>
-      <span style="font-size:12px;color:#6b7280">${window._docPreviewIndex + 1} / ${files.length}</span>
+      <span class="doc-preview-counter">${window._docPreviewIndex + 1} / ${files.length}</span>
       <button onclick="_docPreviewGo(1)" ${window._docPreviewIndex === files.length - 1 ? 'disabled' : ''}
               class="doc-nav-btn">›</button>` : '';
   }
+  _renderDocPreviewStrip(files);
   _showDocPreviewFile(files[window._docPreviewIndex]);
 }
 
