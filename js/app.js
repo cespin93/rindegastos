@@ -269,6 +269,32 @@ async function openReceipt(r) {
 }
 
 const fmt     = n => '$' + Number(n).toLocaleString('es-CL');
+const _moneyDigits = value => String(value ?? '').replace(/\D+/g, '');
+const parseMoney = value => {
+  const digits = _moneyDigits(value);
+  return digits ? Number(digits) : 0;
+};
+const formatMoneyInputValue = value => {
+  const digits = _moneyDigits(value);
+  return digits ? fmt(Number(digits)) : '';
+};
+function setMoneyInputValue(input, value) {
+  if (!input) return;
+  input.value = formatMoneyInputValue(value);
+}
+function bindMoneyInput(input) {
+  if (!input || input.dataset.moneyBound === '1') return;
+  input.dataset.moneyBound = '1';
+  const syncValue = () => {
+    input.value = formatMoneyInputValue(input.value);
+  };
+  input.addEventListener('input', syncValue);
+  input.addEventListener('blur', syncValue);
+  syncValue();
+}
+function bindMoneyInputs(root = document) {
+  root.querySelectorAll('input[data-money-input="true"]').forEach(bindMoneyInput);
+}
 const fmtDate = s => {
   if (!s) return '—';
   const d = s.includes('T') ? s.split('T')[0] : s;
@@ -318,6 +344,7 @@ function badge(status) {
 // ─── Arranque ─────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await _loadViews();
+  bindMoneyInputs();
   initAuth(onSignIn);
 });
 
@@ -1376,7 +1403,7 @@ async function submitExpense(ev) {
     fechaGasto:    f.fechaGasto.value,
     title:         f.title.value.trim(),
     category:      f.category.value,
-    total:         parseFloat(f.total.value),
+    total:         parseMoney(f.total.value),
     docType:       f.docType.value,
     docNumber:     f.docNumber.value.trim(),
     provider:      f.provider.value.trim(),
@@ -1465,7 +1492,7 @@ function addBulkRow() {
       <input type="date" class="input-field-sm" required>
     </td>
     <td class="bulk-td">
-      <input type="number" class="input-field-sm" placeholder="0" min="1" step="1" required style="width:100px">
+      <input type="text" class="input-field-sm" placeholder="$0" required style="width:100px" inputmode="numeric" data-money-input="true" autocomplete="off">
     </td>
     <td class="bulk-td">
       <select class="input-field-sm" required>
@@ -1511,6 +1538,7 @@ function addBulkRow() {
       <button type="button" class="btn-danger-sm" onclick="removeBulkRow(${id})" title="Eliminar fila">✕</button>
     </td>`;
   $('bulk-tbody').appendChild(row);
+  bindMoneyInputs(row);
 }
 
 function removeBulkRow(id) {
@@ -1576,8 +1604,13 @@ async function submitBulk() {
       toast('Completa todos los campos obligatorios en cada fila', 'error');
       return;
     }
+    const parsedTotal = parseMoney(total);
+    if (parsedTotal <= 0) {
+      toast('Ingresa un monto valido mayor a cero en cada fila', 'error');
+      return;
+    }
     expenses.push({
-      title, fechaGasto, total: parseFloat(total),
+      title, fechaGasto, total: parsedTotal,
       category, costCenter, docType, docNumber, provider,
       notes: notes || '', approverEmail, batchName,
       receipts: window._bulkReceipts.get(id) || []
