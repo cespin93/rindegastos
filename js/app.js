@@ -1261,18 +1261,18 @@ function _checkFondoFijo(montoNuevo, extraGastado = 0) {
 
 function _checkDuplicateFolio(provider, docNumber, excludeExpenses = []) {
   if (!provider || !docNumber) return null;
-  const prov = provider.trim().toLowerCase();
-  const num  = docNumber.trim().toLowerCase();
+  const prov = String(provider).trim().toLowerCase();
+  const num  = String(docNumber).trim().toLowerCase();
   const existing = (state.expenses || []).find(e =>
     e.status !== 'RECHAZADO' &&
-    e.provider.trim().toLowerCase() === prov &&
-    e.docNumber.trim().toLowerCase() === num
+    String(e.provider || '').trim().toLowerCase() === prov &&
+    String(e.docNumber || '').trim().toLowerCase() === num
   );
   if (existing) return existing;
   // Check within the provided list (for batch mode)
   const inBatch = excludeExpenses.find(e =>
-    (e.provider || '').trim().toLowerCase() === prov &&
-    (e.docNumber || '').trim().toLowerCase() === num
+    String(e.provider || '').trim().toLowerCase() === prov &&
+    String(e.docNumber || '').trim().toLowerCase() === num
   );
   return inBatch || null;
 }

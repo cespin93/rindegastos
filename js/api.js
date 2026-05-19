@@ -35,12 +35,12 @@ function _rowToExpense(row, rowIndex) {
     status:        row[8]  || 'PENDIENTE',
     observations:  row[11] || '',
     approverEmail:(row[12] || '').toLowerCase(),
-    docType:       row[13] || '',
-    docNumber:     row[14] || '',
-    provider:      row[15] || '',
-    batchName:     row[16] || '',
-    costCenter:    row[17] || '',
-    empresa:       row[18] || ''
+    docType:       String(row[13] || ''),
+    docNumber:     String(row[14] || ''),
+    provider:      String(row[15] || ''),
+    batchName:     String(row[16] || ''),
+    costCenter:    String(row[17] || ''),
+    empresa:       String(row[18] || '')
   };
 }
 
