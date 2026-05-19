@@ -736,6 +736,7 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
     top: 0;
     z-index: 30;
     box-shadow: 0 10px 30px rgba(15,23,42,.18);
+    overflow: hidden;
   }
 
   .sidebar-logo {
@@ -748,6 +749,8 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
     flex-direction: row;
     gap: 8px;
     padding: 0 12px 12px;
+    width: 100%;
+    min-width: 0;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -758,6 +761,8 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
 
   .nav-btn {
     flex: 0 0 auto;
+    width: auto;
+    min-width: max-content;
     white-space: nowrap;
     background: rgba(255,255,255,.08);
     border: 1px solid rgba(255,255,255,.08);
