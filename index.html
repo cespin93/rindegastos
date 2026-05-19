@@ -4,7 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Rindegastos</title>
-  <link rel="stylesheet" href="./styles.css?v=12">
+  <script>
+    window.RG_ASSET_VERSION = '12';
+    document.write('<link rel="stylesheet" href="./styles.css?v=' + window.RG_ASSET_VERSION + '">');
+  </script>
 </head>
 <body>
 
@@ -112,9 +115,11 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="./js/config.js?v=12"></script>
-<script src="./js/auth.js?v=12"></script>
-<script src="./js/api.js?v=12"></script>
-<script src="./js/app.js?v=12"></script>
+<script>
+  document.write('<script src="./js/config.js?v=' + window.RG_ASSET_VERSION + '"><\\/script>');
+  document.write('<script src="./js/auth.js?v=' + window.RG_ASSET_VERSION + '"><\\/script>');
+  document.write('<script src="./js/api.js?v=' + window.RG_ASSET_VERSION + '"><\\/script>');
+  document.write('<script src="./js/app.js?v=' + window.RG_ASSET_VERSION + '"><\\/script>');
+</script>
 </body>
 </html>
