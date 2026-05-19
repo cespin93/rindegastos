@@ -122,6 +122,26 @@ function _renderPdfLoadingState(container) {
     </div>`;
 }
 
+function _renderReceiptContent(container, r) {
+  if (!container) return;
+
+  const isImage    = r.mime?.startsWith('image/');
+  const isPdf      = (r.mime || '').includes('pdf');
+  const previewUrl = r.inlineUrl || `https://drive.google.com/file/d/${r.id}/preview`;
+  const imgUrl     = r.inlineUrl || `https://drive.google.com/uc?id=${r.id}&export=view`;
+
+  if (r.loading && isPdf) {
+    _renderPdfLoadingState(container);
+  } else if (isImage) {
+    container.innerHTML = `<img src="${imgUrl}" alt="${r.name}"
+        onerror="this.outerHTML='<p style=color:#fff;padding:20px>No se pudo cargar. <a href=\\'${r.url}\\' target=\\'_blank\\' style=color:#93c5fd>Abrir en Drive</a></p>'">`;
+  } else if (isPdf) {
+    _renderPdfWithLoader(container, previewUrl, r.url);
+  } else {
+    container.innerHTML = `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
+  }
+}
+
 function openFileViewer(r) {
   const overlay = $('file-viewer-overlay');
   const content = $('file-viewer-content');
@@ -131,25 +151,51 @@ function openFileViewer(r) {
 
   nameEl.textContent = r.name || 'Archivo';
   linkEl.href        = r.url  || '#';
-
-  const isImage    = r.mime?.startsWith('image/');
-  const isPdf      = (r.mime || '').includes('pdf');
-  const previewUrl = r.inlineUrl || `https://drive.google.com/file/d/${r.id}/preview`;
-  const imgUrl     = r.inlineUrl || `https://drive.google.com/uc?id=${r.id}&export=view`;
-
-  if (r.loading && isPdf) {
-    _renderPdfLoadingState(content);
-  } else if (isImage) {
-    content.innerHTML = `<img src="${imgUrl}" alt="${r.name}"
-        onerror="this.outerHTML='<p style=color:#fff;padding:20px>No se pudo cargar. <a href=\\'${r.url}\\' target=\\'_blank\\' style=color:#93c5fd>Abrir en Drive</a></p>'">`;
-  } else if (isPdf) {
-    _renderPdfWithLoader(content, previewUrl, r.url);
-  } else {
-    content.innerHTML = `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
-  }
+  _renderReceiptContent(content, r);
 
   overlay.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+}
+
+function closeDetailReceiptPreview() {
+  const panel = $('detail-preview-panel');
+  const content = $('detail-preview-content');
+  const nameEl = $('detail-preview-name');
+  const linkEl = $('detail-preview-link');
+  if (panel) panel.classList.add('hidden');
+  if (content) {
+    content.innerHTML = '<span class="doc-preview-empty">📎 Selecciona un documento<br>para visualizarlo aquí</span>';
+  }
+  if (nameEl) nameEl.textContent = 'Selecciona un adjunto';
+  if (linkEl) {
+    linkEl.href = '#';
+    linkEl.classList.add('hidden');
+  }
+  document.querySelectorAll('#d-receipts .receipt-link').forEach(btn => btn.classList.remove('is-active'));
+}
+
+function _showDetailReceiptPreview(r) {
+  const panel = $('detail-preview-panel');
+  const content = $('detail-preview-content');
+  const nameEl = $('detail-preview-name');
+  const linkEl = $('detail-preview-link');
+  if (!panel || !content || !nameEl || !linkEl) return false;
+
+  $('file-viewer-overlay')?.classList.add('hidden');
+  if ($('file-viewer-content')) $('file-viewer-content').innerHTML = '';
+  document.body.style.overflow = '';
+
+  panel.classList.remove('hidden');
+  nameEl.textContent = r.name || 'Archivo';
+  linkEl.href = r.url || '#';
+  linkEl.classList.toggle('hidden', !r.url);
+  _renderReceiptContent(content, r);
+
+  document.querySelectorAll('#d-receipts .receipt-link').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.receiptId === String(r.id || ''));
+  });
+
+  return true;
 }
 
 function closeFileViewer() {
@@ -165,24 +211,31 @@ function closeFileViewer() {
 async function openReceipt(r) {
   if (!r) return;
   const isPdf = (r.mime || '').includes('pdf');
+  const inlineDetailPreview = $('view-detail') && !$('view-detail').classList.contains('hidden') && $('detail-preview-panel');
   try {
     if (isPdf) {
-      openFileViewer({
+      const loadingPayload = {
         ...r,
         loading: true
-      });
+      };
+      if (!_showDetailReceiptPreview(loadingPayload) || !inlineDetailPreview) {
+        openFileViewer(loadingPayload);
+      }
     }
     if (r.id) {
       const res = await getReceiptContent(r.id);
       const blob = _base64ToBlob(res.data, res.mime || r.mime);
       if (_activeReceiptObjectUrl) URL.revokeObjectURL(_activeReceiptObjectUrl);
       _activeReceiptObjectUrl = URL.createObjectURL(blob);
-      openFileViewer({
+      const previewPayload = {
         ...r,
         name: res.name || r.name,
         mime: res.mime || r.mime,
         inlineUrl: _activeReceiptObjectUrl
-      });
+      };
+      if (!_showDetailReceiptPreview(previewPayload) || !inlineDetailPreview) {
+        openFileViewer(previewPayload);
+      }
       return;
     }
   } catch (e) {
@@ -731,6 +784,7 @@ function exportCSV() {
 function openDetail(rowIndex, context) {
   const e = state.expenses.find(x => x.rowIndex === rowIndex);
   if (!e) return;
+  closeFileViewer();
   if (!_canAccessExpense(e)) {
     toast('No tienes permisos para visualizar este gasto', 'error');
     return;
@@ -753,7 +807,7 @@ function openDetail(rowIndex, context) {
 
   $('d-receipts').innerHTML = e.receipts?.length
     ? e.receipts.map(r => `
-        <button class="receipt-link" onclick='openReceipt(${JSON.stringify(r)})'>
+        <button class="receipt-link" data-receipt-id="${String(r.id || '')}" onclick='openReceipt(${JSON.stringify(r)})'>
           ${_receiptIcon(r.mime)} ${r.name}
         </button>`).join('')
     : '<p class="text-muted">Sin archivos adjuntos</p>';
@@ -781,6 +835,10 @@ function openDetail(rowIndex, context) {
   if (canL2) $('d-comment-l2').value = '';
 
   showView('view-detail');
+  closeDetailReceiptPreview();
+  if (context === 'approvals' && e.receipts?.length) {
+    openReceipt(e.receipts[0]);
+  }
 }
 
 async function doDecision(newStatus) {

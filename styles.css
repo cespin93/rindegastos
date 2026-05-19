@@ -384,12 +384,67 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
 .detail-divider-h  { border-bottom: 1px solid #f3f4f6; }
 .detail-divider-v  { border-right: 1px solid #f3f4f6; }
 .detail-full { grid-column: 1 / -1; padding: 14px 18px; border-bottom: 1px solid #f3f4f6; }
+.detail-page-header { max-width: 1320px; }
+.detail-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(360px, 0.85fr);
+  gap: 24px;
+  align-items: start;
+  max-width: 1320px;
+}
+.detail-main-column {
+  min-width: 0;
+}
+.detail-main-column .detail-card {
+  max-width: none;
+}
+.detail-preview-panel {
+  width: 100%;
+  min-width: 0;
+  top: 28px;
+  min-height: 720px;
+}
+.detail-preview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.detail-preview-label {
+  font-size: 11px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 4px;
+}
+.detail-preview-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+  word-break: break-word;
+}
+.detail-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.detail-preview-link.hidden {
+  display: none !important;
+}
 .receipt-link {
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   background: #f8fafc; border-radius: 8px; font-size: 13px; color: #2563eb;
   text-decoration: none; transition: background .15s;
 }
 .receipt-link:hover { background: #eff6ff; }
+.receipt-link.is-active {
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-weight: 600;
+}
 .actions-card {
   background: #fff; border: 1px solid #e5e7eb; border-radius: 14px;
   padding: 22px; margin-top: 16px; max-width: 680px;
@@ -541,3 +596,16 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
   transition: opacity .15s;
 }
 .conta-file-link:hover { opacity: 1; }
+
+@media(max-width: 1180px) {
+  .detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-preview-panel {
+    position: static;
+    height: 620px;
+    max-height: none;
+    min-height: 0;
+  }
+}
