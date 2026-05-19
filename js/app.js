@@ -53,6 +53,11 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.remove(), 3500);
 }
 
+function blockingAlert(msg) {
+  toast(msg, 'error');
+  window.alert(msg);
+}
+
 function loading(show) { $('loading').classList.toggle('hidden', !show); }
 
 function showView(id) {
@@ -1111,6 +1116,7 @@ async function handleFiles(input) {
     } catch (e) {
       item.className = 'file-item file-error';
       item.innerHTML = `❌ ${file.name}: ${e.message}`;
+      blockingAlert(`No se pudo subir el archivo "${file.name}": ${e.message}`);
     }
   }
   _updateDocPreview();
@@ -1287,9 +1293,13 @@ async function submitExpense(ev) {
     costCenter:    f.costCenter.value,
     receipts:      window._receipts || []
   };
+  if (!exp.receipts.length) {
+    blockingAlert('No se puede subir una rendición sin un archivo adjunto. Debes subir al menos un respaldo del gasto.');
+    return;
+  }
   const dup = _checkDuplicateFolio(exp.provider, exp.docNumber);
   if (dup) {
-    toast(`Folio "${exp.docNumber}" ya existe para el proveedor "${exp.provider}"`, 'error');
+    blockingAlert(`Folio "${exp.docNumber}" ya existe para el proveedor "${exp.provider}".`);
     return;
   }
   const ffCheck = _checkFondoFijo(exp.total);
@@ -1440,8 +1450,9 @@ async function handleBulkFiles(input, rowId) {
       const btn = $(`bulk-autofill-${rowId}`);
       if (btn) btn.style.display = 'block';
     } catch (e) {
-      statusEl.textContent = `❌ Error`;
+      statusEl.textContent = `❌ ${e.message}`;
       statusEl.style.color = '#dc2626';
+      blockingAlert(`No se pudo subir el archivo "${file.name}" en la fila ${rowId + 1}: ${e.message}`);
     }
   }
   window._bulkUploading.delete(rowId);
@@ -1479,6 +1490,10 @@ async function submitBulk() {
       notes: notes || '', approverEmail, batchName,
       receipts: window._bulkReceipts.get(id) || []
     });
+    if (!expenses[expenses.length - 1].receipts.length) {
+      blockingAlert(`No se puede subir una rendición sin un archivo adjunto. La fila ${id + 1} no tiene respaldo cargado.`);
+      return;
+    }
   }
 
   // Validate folio duplicates (system-wide + within batch)
@@ -1486,7 +1501,7 @@ async function submitBulk() {
   for (const exp of expenses) {
     const dup = _checkDuplicateFolio(exp.provider, exp.docNumber, seen);
     if (dup) {
-      toast(`Folio "${exp.docNumber}" duplicado para el proveedor "${exp.provider}"`, 'error');
+      blockingAlert(`Folio "${exp.docNumber}" duplicado para el proveedor "${exp.provider}".`);
       return;
     }
     if (exp.provider && exp.docNumber) seen.push(exp);
