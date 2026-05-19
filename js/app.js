@@ -1316,7 +1316,7 @@ async function submitExpense(ev) {
     window._receipts = [];
     await navDashboard();
   } catch (e) {
-    toast(e.message, 'error');
+    blockingAlert(e.message || 'No se pudo registrar la rendición.');
   } finally {
     loading(false);
   }
@@ -1526,7 +1526,7 @@ async function submitBulk() {
     _resetBulk();
     await navDashboard();
   } catch (e) {
-    toast(e.message, 'error');
+    blockingAlert(e.message || 'No se pudo registrar el conjunto de rendiciones.');
   } finally {
     loading(false);
   }
