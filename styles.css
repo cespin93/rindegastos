@@ -898,11 +898,56 @@ label       { display: block; font-size: 13px; font-weight: 600; color: #374151;
 
   .doc-preview-panel,
   .detail-preview-panel {
-    height: 480px;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    padding: 14px;
+  }
+
+  .doc-preview-content,
+  .detail-preview-content {
+    min-height: 220px;
+    max-height: 260px;
+    padding: 10px;
+  }
+
+  .doc-preview-stage {
+    border-radius: 12px;
+  }
+
+  .doc-preview-name {
+    font-size: 14px;
+  }
+
+  .doc-preview-meta {
+    font-size: 11px;
+  }
+
+  .doc-preview-actions {
+    gap: 6px;
+  }
+
+  .doc-preview-open,
+  .doc-nav-btn,
+  .doc-preview-counter {
+    height: 32px;
   }
 
   .doc-preview-strip {
     grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .doc-preview-thumb {
+    padding: 8px 10px;
+    border-radius: 12px;
+  }
+
+  .doc-preview-thumb-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
   }
 
   .bulk-table {
