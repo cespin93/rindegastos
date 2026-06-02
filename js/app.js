@@ -2,6 +2,7 @@
 const state = {
   role:           null,  // RENDIDOR | APROBADOR | GERENTE | ADMIN
   expenses:       [],
+  payments:       [],
   categories:     [],
   costCenters:    [],
   users:          [],
@@ -345,6 +346,48 @@ function badge(status) {
   return `<span class="badge ${cls[status] || 'badge-gray'}">${status}</span>`;
 }
 
+function _getPaymentStatus(exp) {
+  if (exp.paymentStatus) return exp.paymentStatus;
+  return exp.status === 'AUTORIZADO' ? 'PENDIENTE_PAGO' : '';
+}
+
+function _getPaymentStatusLabel(status) {
+  const labels = {
+    PENDIENTE_PAGO: 'Pendiente de pago',
+    EN_PREPARACION_PAGO: 'En preparacion',
+    PAGADO: 'Pagado',
+    ANULADO_PAGO: 'Anulado'
+  };
+  return labels[status] || 'Pendiente de pago';
+}
+
+function _paymentBadge(status, batchId) {
+  const normalized = status || 'PENDIENTE_PAGO';
+  const cls = {
+    PENDIENTE_PAGO: 'pending',
+    EN_PREPARACION_PAGO: 'preparing',
+    PAGADO: 'paid',
+    ANULADO_PAGO: 'cancelled'
+  }[normalized] || 'pending';
+  const meta = batchId ? `<span class="conta-pay-meta">Lote ${_escapeHtml(batchId)}</span>` : '';
+  return `<span class="conta-pay-badge ${cls}">${_getPaymentStatusLabel(normalized)}</span>${meta}`;
+}
+
+function _canSelectPaymentStatus(status) {
+  return status === 'PENDIENTE_PAGO' || status === 'ANULADO_PAGO';
+}
+
+function _buildPaymentBatchId() {
+  const stamp = new Date();
+  const yyyy = stamp.getFullYear();
+  const mm = String(stamp.getMonth() + 1).padStart(2, '0');
+  const dd = String(stamp.getDate()).padStart(2, '0');
+  const hh = String(stamp.getHours()).padStart(2, '0');
+  const min = String(stamp.getMinutes()).padStart(2, '0');
+  const sec = String(stamp.getSeconds()).padStart(2, '0');
+  return `PG-${yyyy}${mm}${dd}-${hh}${min}${sec}`;
+}
+
 // ─── Arranque ─────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await _loadViews();
@@ -379,8 +422,9 @@ async function _loadViews() {
   const main = document.getElementById('main-content');
   const views = ['dashboard', 'new-expense', 'detail', 'approvals', 'gerencia', 'contabilidad', 'admin', 'batch-detail'];
   const baseUrl = new URL('.', window.location.href);
+  const viewVersion = '12';
   for (const name of views) {
-    const res  = await fetch(new URL(`views/${name}.html`, baseUrl), { cache: 'no-store' });
+    const res  = await fetch(new URL(`views/${name}.html?v=${viewVersion}`, baseUrl), { cache: 'no-store' });
     const html = await res.text();
     main.insertAdjacentHTML('beforeend', html);
   }
@@ -2237,16 +2281,20 @@ async function saveFondoFijo(email) {
 // ─── CONTABILIDAD ─────────────────────────────
 // Cache de los documentos autorizados filtrados actualmente visibles
 let _contaData = [];
+let _contaFiltered = [];
+const _contaSelection = new Set();
 
 async function navContabilidad() {
   loading(true);
   try {
     showView('view-contabilidad');
-    const all = await getExpenses();
+    const [all, payments] = await Promise.all([getExpenses(), getPayments()]);
     _mergeExpenses(all);
+    state.payments = payments;
 
     // Solo rendiciones AUTORIZADAS
     _contaData = all.filter(e => e.status === 'AUTORIZADO');
+    _contaSelection.clear();
 
     // Poblar filtro de categorías
     const cats = [...new Set(_contaData.map(e => e.category).filter(Boolean))].sort();
@@ -2254,7 +2302,12 @@ async function navContabilidad() {
     catSel.innerHTML = '<option value="">Todas las categorías</option>' +
       cats.map(c => `<option>${c}</option>`).join('');
 
-    _renderConta(_contaData);
+    if ($('conta-pay-date') && !$('conta-pay-date').value) {
+      $('conta-pay-date').value = new Date().toISOString().split('T')[0];
+    }
+
+    filterConta();
+    _renderPaymentBatches();
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
 }
 
@@ -2262,14 +2315,17 @@ function filterConta() {
   const q     = $('conta-search').value.toLowerCase();
   const tipo  = $('conta-filter-tipo').value;
   const cat   = $('conta-filter-cat').value;
+  const pago  = $('conta-filter-pago').value;
   const desde = $('conta-filter-desde').value;
   const hasta = $('conta-filter-hasta').value;
 
   const all = state.expenses.filter(e => e.status === 'AUTORIZADO');
   const filtered = all.filter(e => {
-    if (q && !`${e.docNumber} ${e.provider} ${e.title} ${e.category}`.toLowerCase().includes(q)) return false;
+    const paymentStatus = _getPaymentStatus(e);
+    if (q && !`${e.docNumber} ${e.provider} ${e.title} ${e.category} ${e.email}`.toLowerCase().includes(q)) return false;
     if (tipo && e.docType !== tipo)      return false;
     if (cat  && e.category !== cat)     return false;
+    if (pago && paymentStatus !== pago) return false;
     if (desde && e.fechaGasto < desde)  return false;
     if (hasta && e.fechaGasto > hasta)  return false;
     return true;
@@ -2278,37 +2334,53 @@ function filterConta() {
 }
 
 function _renderConta(exps) {
+  _contaFiltered = exps;
   // ── KPIs ──
-  const total   = exps.reduce((s, e) => s + e.total, 0);
-  const boletas = exps.filter(e => e.docType === 'BOLETA').length;
-  const facturas= exps.filter(e => e.docType === 'FACTURA').length;
-  const otros   = exps.filter(e => e.docType !== 'BOLETA' && e.docType !== 'FACTURA').length;
+  const total    = exps.reduce((s, e) => s + e.total, 0);
+  const boletas  = exps.filter(e => e.docType === 'BOLETA').length;
+  const facturas = exps.filter(e => e.docType === 'FACTURA').length;
+  const pending  = exps.filter(e => _getPaymentStatus(e) === 'PENDIENTE_PAGO').length;
+  const preparing = exps.filter(e => _getPaymentStatus(e) === 'EN_PREPARACION_PAGO').length;
+  const paid     = exps.filter(e => _getPaymentStatus(e) === 'PAGADO').length;
 
   $('conta-kpi-count').textContent   = exps.length;
   $('conta-kpi-total').textContent   = fmt(total);
+  $('conta-kpi-pending').textContent = pending;
+  $('conta-kpi-preparing').textContent = preparing;
+  $('conta-kpi-paid').textContent    = paid;
   $('conta-kpi-boleta').textContent  = boletas;
   $('conta-kpi-factura').textContent = facturas;
-  $('conta-kpi-otros').textContent   = otros;
   $('conta-subtitle').textContent    = exps.length
-    ? `${exps.length} documento${exps.length > 1 ? 's' : ''} autorizado${exps.length > 1 ? 's' : ''}`
+    ? `${exps.length} documento${exps.length > 1 ? 's' : ''} autorizado${exps.length > 1 ? 's' : ''} · ${pending} pendiente${pending === 1 ? '' : 's'} · ${preparing} en preparación`
     : 'Sin documentos autorizados';
+
+  _renderContaSelectionSummary();
 
   // ── Tabla principal ──
   const tbody = $('conta-tbody');
   if (!exps.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty-row">Sin documentos autorizados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="empty-row">Sin documentos autorizados</td></tr>';
   } else {
-    // Número de folio = rowIndex en la hoja (identificador único estable)
     tbody.innerHTML = exps.map(e => `
       <tr class="table-row" onclick="openDetail(${e.rowIndex},'dashboard')">
+        <td class="td" onclick="event.stopPropagation()">
+          <input
+            type="checkbox"
+            class="conta-check"
+            ${_contaSelection.has(e.rowIndex) ? 'checked' : ''}
+            ${_canSelectPaymentStatus(_getPaymentStatus(e)) ? '' : 'disabled'}
+            onchange="toggleContaSelection(${e.rowIndex})">
+        </td>
         <td class="td td-bold conta-folio">${e.docNumber || '—'}</td>
         <td class="td">${fmtDate(e.fechaGasto)}</td>
         <td class="td"><span class="tag">${e.docType}</span></td>
         <td class="td td-bold">${e.provider || '—'}</td>
         <td class="td td-muted">${e.category}</td>
         <td class="td">${e.title}</td>
-        <td class="td td-muted">${e.email}</td>
+        <td class="td td-muted">${_getUserName(e.email)}</td>
         <td class="td td-bold" style="color:#111827">${fmt(e.total)}</td>
+        <td class="td">${_paymentBadge(_getPaymentStatus(e), e.paymentBatchId)}</td>
+        <td class="td td-muted">${e.paymentDate ? fmtDate(e.paymentDate) : '—'}</td>
         <td class="td td-muted" style="font-size:12px">${_getUserName(e.approverEmail)}</td>
         <td class="td">
           ${e.receipts?.length
@@ -2325,6 +2397,519 @@ function _renderConta(exps) {
   // ── Resumen por tipo ──
   const byTipo = _groupAndSum(exps, 'docType');
   $('conta-by-tipo').innerHTML = _renderBreakdown(byTipo, total);
+}
+
+function _getSelectedContaExpenses() {
+  return state.expenses
+    .filter(e => _contaSelection.has(e.rowIndex))
+    .sort((a, b) => String(a.fechaGasto || '').localeCompare(String(b.fechaGasto || '')) || a.rowIndex - b.rowIndex);
+}
+
+function _getPaymentExpenses(payment) {
+  let rows = [];
+  try {
+    rows = JSON.parse(payment?.expenseRowsJson || '[]');
+  } catch {
+    rows = [];
+  }
+  return state.expenses.filter(e => rows.includes(e.rowIndex));
+}
+
+function _sortPaymentsDesc(list) {
+  return [...(list || [])].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || b.rowIndex - a.rowIndex);
+}
+
+function _renderPaymentBatches() {
+  const tbody = $('conta-payments-tbody');
+  if (!tbody) return;
+  const payments = _sortPaymentsDesc(state.payments);
+  if (!payments.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row">Sin lotes de pago registrados</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = payments.map(payment => {
+    const canFinalize = payment.paymentStatus === 'EN_PREPARACION_PAGO';
+    const canCancel = payment.paymentStatus === 'EN_PREPARACION_PAGO' || payment.paymentStatus === 'PAGADO';
+    return `
+      <tr>
+        <td class="td td-bold conta-folio">${_escapeHtml(payment.paymentBatchId)}</td>
+        <td class="td">${_escapeHtml(payment.payeeName || _getUserName(payment.payeeEmail))}</td>
+        <td class="td">${_paymentBadge(payment.paymentStatus, '')}</td>
+        <td class="td">${payment.paymentDate ? fmtDate(payment.paymentDate) : '—'}</td>
+        <td class="td td-bold">${fmt(payment.totalAmount)}</td>
+        <td class="td">${_escapeHtml(payment.paymentRef || '—')}</td>
+        <td class="td">${payment.documentCount}</td>
+        <td class="td">${payment.packetUrl ? `<a class="conta-batch-link" href="${payment.packetUrl}" target="_blank" rel="noopener">Abrir PDF</a>` : '—'}</td>
+        <td class="td">
+          <div class="conta-batch-actions">
+            ${canFinalize ? `<button type="button" class="btn-secondary" onclick="finalizePaymentBatch(${payment.rowIndex})">Finalizar</button>` : ''}
+            ${canCancel ? `<button type="button" class="btn-secondary" onclick="cancelPaymentBatch(${payment.rowIndex})">Anular</button>` : ''}
+            <button type="button" class="btn-secondary" onclick="reprintPaymentBatch(${payment.rowIndex})">Reimprimir</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function _renderContaSelectionSummary() {
+  const summaryEl = $('conta-payment-summary');
+  if (!summaryEl) return;
+
+  const selected = _getSelectedContaExpenses();
+  if (!selected.length) {
+    summaryEl.textContent = 'Selecciona documentos pendientes del mismo rendidor para generar el comprobante de pago.';
+    return;
+  }
+
+  const total = selected.reduce((sum, exp) => sum + exp.total, 0);
+  summaryEl.textContent = `${selected.length} documento${selected.length === 1 ? '' : 's'} seleccionado${selected.length === 1 ? '' : 's'} · Rendidor: ${_getUserName(selected[0].email)} · Total a pagar: ${fmt(total)}`;
+}
+
+function clearContaSelection() {
+  _contaSelection.clear();
+  _renderConta(_contaFiltered);
+}
+
+function toggleContaSelection(rowIndex) {
+  const exp = state.expenses.find(item => item.rowIndex === rowIndex);
+  if (!exp || exp.status !== 'AUTORIZADO') return;
+  if (!_canSelectPaymentStatus(_getPaymentStatus(exp))) {
+    toast('Ese documento no está disponible para un nuevo lote de pago.', 'info');
+    return;
+  }
+
+  if (_contaSelection.has(rowIndex)) {
+    _contaSelection.delete(rowIndex);
+    _renderConta(_contaFiltered);
+    return;
+  }
+
+  const selected = _getSelectedContaExpenses();
+  if (selected.length && selected[0].email !== exp.email) {
+    toast('El lote de pago debe corresponder a un solo rendidor.', 'error');
+    return;
+  }
+
+  _contaSelection.add(rowIndex);
+  _renderConta(_contaFiltered);
+}
+
+async function _buildPaymentPrintSnapshot(expenses) {
+  const snapshot = [];
+  for (const exp of expenses) {
+    const cloned = { ...exp, receipts: [] };
+    const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
+    for (const receipt of receipts) {
+      const clonedReceipt = { ...receipt };
+      if (receipt?.id) {
+        try {
+          const content = await getReceiptContent(receipt.id);
+          if (content?.data && content?.mime) {
+            clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
+            clonedReceipt.mime = content.mime;
+          }
+        } catch (err) {
+          clonedReceipt.loadError = err.message;
+        }
+      }
+      cloned.receipts.push(clonedReceipt);
+    }
+    snapshot.push(cloned);
+  }
+  return snapshot;
+}
+
+function _buildPaymentAttachments(expenses) {
+  const sections = [];
+  expenses.forEach((exp, expenseIndex) => {
+    const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
+    if (!receipts.length) {
+      sections.push(`
+        <section class="payment-doc-attachment" style="page-break-after:always;padding:24px 30px;font-family:Arial,sans-serif;color:#111827">
+          <div style="font-size:18px;font-weight:800;margin-bottom:8px">Respaldo ${expenseIndex + 1}</div>
+          <div style="font-size:13px;color:#4b5563">${_escapeHtml(exp.docType)} ${_escapeHtml(exp.docNumber || 'Sin folio')} · ${_escapeHtml(exp.title || 'Sin concepto')}</div>
+          <p style="margin-top:20px">No hay adjuntos disponibles para este documento.</p>
+        </section>`);
+      return;
+    }
+
+    receipts.forEach((receipt, receiptIndex) => {
+      const title = `Respaldo ${expenseIndex + 1}.${receiptIndex + 1}`;
+      const source = receipt.inlineUrl || receipt.url || '';
+      const mime = String(receipt.mime || '');
+      let body = '<p>Adjunto sin URL disponible.</p>';
+      if (receipt.loadError) {
+        body = `<p>No se pudo cargar el adjunto: ${_escapeHtml(receipt.loadError)}</p>`;
+      } else if (source && mime.startsWith('image/')) {
+        body = `<img src="${source}" alt="${_escapeHtml(receipt.name || title)}" style="max-width:100%;max-height:980px;display:block;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px">`;
+      } else if (source && mime.includes('pdf')) {
+        body = `
+          <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;height:980px;background:#fff">
+            <iframe src="${source}#toolbar=0&navpanes=0&scrollbar=0" title="${_escapeHtml(receipt.name || title)}" style="width:100%;height:100%;border:none"></iframe>
+          </div>`;
+      } else if (source) {
+        body = `<p><a href="${source}" target="_blank" rel="noopener">Abrir adjunto ${_escapeHtml(receipt.name || title)}</a></p>`;
+      }
+
+      sections.push(`
+        <section class="payment-doc-attachment" style="page-break-after:always;padding:24px 30px;font-family:Arial,sans-serif;color:#111827">
+          <div style="font-size:18px;font-weight:800;margin-bottom:8px">${title}</div>
+          <div style="font-size:13px;color:#4b5563;margin-bottom:18px">${_escapeHtml(exp.docType)} ${_escapeHtml(exp.docNumber || 'Sin folio')} · ${_escapeHtml(exp.provider || 'Sin proveedor')} · ${fmt(exp.total)}</div>
+          ${body}
+        </section>`);
+    });
+  });
+  return sections.join('');
+}
+
+function _buildPaymentPacketHtml(payload, options = {}) {
+  const payment = payload || {};
+  const expenses = Array.isArray(payment.expenses) ? payment.expenses : [];
+  if (!expenses.length) return '';
+  const autoPrint = !!options.autoPrint;
+
+  const ownerName = _getUserName(expenses[0].email);
+  const ownerEmail = expenses[0].email || '—';
+  const total = expenses.reduce((sum, exp) => sum + exp.total, 0);
+  const rows = expenses.map((exp, idx) => `
+    <tr>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${idx + 1}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${fmtDate(exp.fechaGasto)}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docType || '—')}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docNumber || '—')}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.provider || '—')}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.title || '—')}</td>
+      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${fmt(exp.total)}</td>
+    </tr>`).join('');
+
+  const attachments = _buildPaymentAttachments(expenses);
+  return `<!DOCTYPE html>
+  <html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <title>Comprobante ${_escapeHtml(payment.paymentBatchId || '')}</title>
+    <style>
+      body { margin: 0; background: #f3f4f6; }
+      .sheet { max-width: 1080px; margin: 0 auto; background: #fff; }
+      .cover { page-break-after: always; padding: 30px 34px; font-family: Arial, sans-serif; color: #111827; }
+      .head { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin-bottom:24px; }
+      .chip { display:inline-block; padding:6px 10px; background:#dbeafe; color:#1d4ed8; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.04em; }
+      h1 { margin:10px 0 6px; font-size:28px; }
+      .meta { font-size:13px; color:#4b5563; line-height:1.6; }
+      .total-box { min-width:240px; border-radius:16px; background:#111827; color:#fff; padding:18px 20px; }
+      .total-box strong { display:block; font-size:13px; color:#d1d5db; margin-bottom:6px; }
+      .total-box span { font-size:30px; font-weight:800; }
+      .section { margin-top:24px; }
+      .section h2 { margin:0 0 10px; font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:#374151; }
+      .box { border:1px solid #e5e7eb; border-radius:14px; padding:16px 18px; background:#fafafa; }
+      .grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+      .label { font-size:12px; color:#6b7280; margin-bottom:4px; }
+      .value { font-size:14px; font-weight:700; color:#111827; }
+      table { width:100%; border-collapse:collapse; font-size:13px; }
+      thead th { padding:10px 8px; text-align:left; background:#f3f4f6; border-bottom:1px solid #d1d5db; }
+      .signatures { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:22px; }
+      .sign { border:1px solid #e5e7eb; border-radius:14px; min-height:110px; padding:14px 16px; }
+      .sign strong { display:block; font-size:12px; text-transform:uppercase; color:#6b7280; margin-bottom:32px; }
+      @media print {
+        body { background:#fff; }
+        .sheet { max-width:none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sheet">
+      <section class="cover">
+        <div class="head">
+          <div>
+            <div class="chip">COMPROBANTE DE PAGO</div>
+            <h1>Desglose de documentos pagados</h1>
+            <div class="meta">
+              <div><strong>Lote:</strong> ${_escapeHtml(payment.paymentBatchId || '—')}</div>
+              <div><strong>Fecha de pago:</strong> ${fmtDate(payment.paymentDate || '')}</div>
+              <div><strong>Referencia:</strong> ${_escapeHtml(payment.paymentRef || '—')}</div>
+              <div><strong>Procesado por:</strong> ${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+            </div>
+          </div>
+          <div class="total-box">
+            <strong>Total pagado</strong>
+            <span>${fmt(total)}</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Rendidor</h2>
+          <div class="box grid">
+            <div><div class="label">Nombre</div><div class="value">${_escapeHtml(ownerName)}</div></div>
+            <div><div class="label">Email</div><div class="value">${_escapeHtml(ownerEmail)}</div></div>
+            <div><div class="label">Empresa</div><div class="value">${_escapeHtml(expenses[0].empresa || '—')}</div></div>
+            <div><div class="label">Cantidad documentos</div><div class="value">${expenses.length}</div></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h2>Detalle</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Folio</th>
+                <th>Proveedor</th>
+                <th>Concepto</th>
+                <th style="text-align:right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows}
+              <tr>
+                <td colspan="6" style="padding:12px 8px;text-align:right;font-weight:800;border-top:2px solid #111827">Total a pagar</td>
+                <td style="padding:12px 8px;text-align:right;font-size:16px;font-weight:800;border-top:2px solid #111827">${fmt(total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="section">
+          <h2>Observaciones</h2>
+          <div class="box">${_escapeHtml(payment.paymentNotes || 'Sin observaciones')}</div>
+        </div>
+
+        <div class="signatures">
+          <div class="sign">
+            <strong>Recibe conforme</strong>
+            ${_escapeHtml(ownerName)}
+          </div>
+          <div class="sign">
+            <strong>Procesa pago</strong>
+            ${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}
+          </div>
+        </div>
+      </section>
+      ${attachments}
+    </div>
+    ${autoPrint ? `<script>
+      window.addEventListener('load', function () {
+        setTimeout(function () { window.print(); }, 400);
+      });
+    <\/script>` : ''}
+  </body>
+  </html>`;
+}
+
+function printPaymentPacket(printWindow, payload) {
+  const html = _buildPaymentPacketHtml(payload, { autoPrint: true });
+  if (!printWindow || printWindow.closed || !html) return;
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+}
+
+async function _persistPaymentStatus(expenses, payload) {
+  for (const exp of expenses) {
+    await updateExpensePayment(exp.rowIndex, payload);
+    Object.assign(exp, payload);
+  }
+}
+
+async function preparePaymentBatch() {
+  const selected = _getSelectedContaExpenses();
+  if (!selected.length) {
+    toast('Selecciona al menos un documento disponible para preparar el lote.', 'info');
+    return;
+  }
+  if (selected.some(exp => exp.email !== selected[0].email)) {
+    toast('El lote de pago debe corresponder a un solo rendidor.', 'error');
+    return;
+  }
+
+  const paymentDate = $('conta-pay-date')?.value || new Date().toISOString().split('T')[0];
+  const paymentRef = ($('conta-pay-ref')?.value || '').trim();
+  const paymentNotes = ($('conta-pay-notes')?.value || '').trim();
+  if (!paymentRef) {
+    toast('Ingresa una referencia del pago para la trazabilidad.', 'error');
+    $('conta-pay-ref')?.focus();
+    return;
+  }
+
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+  if (!printWindow) {
+    toast('El navegador bloqueó la ventana de impresión. Habilita popups e inténtalo nuevamente.', 'error');
+    return;
+  }
+
+  const currentUser = getCurrentUser() || {};
+  const paymentBatchId = _buildPaymentBatchId();
+  const paymentBy = (currentUser.email || '').toLowerCase();
+
+  loading(true);
+  try {
+    const snapshot = await _buildPaymentPrintSnapshot(selected);
+    const paymentPayload = {
+      paymentBatchId,
+      paymentDate,
+      paymentRef,
+      paymentNotes,
+      paymentBy,
+      paymentByName: _getUserName(paymentBy),
+      expenses: snapshot
+    };
+    const html = _buildPaymentPacketHtml(paymentPayload, { autoPrint: false });
+    const savedPacket = await savePaymentPacket(paymentBatchId, html);
+    const rowIndexes = selected.map(exp => exp.rowIndex);
+    const record = {
+      paymentBatchId,
+      createdAt: new Date().toISOString(),
+      paymentStatus: 'EN_PREPARACION_PAGO',
+      paymentDate,
+      payeeEmail: selected[0].email,
+      payeeName: _getUserName(selected[0].email),
+      documentCount: selected.length,
+      totalAmount: selected.reduce((sum, exp) => sum + exp.total, 0),
+      paymentRef,
+      paymentNotes,
+      processedBy: paymentBy,
+      expenseRowsJson: JSON.stringify(rowIndexes),
+      folios: selected.map(exp => exp.docNumber || `fila-${exp.rowIndex}`).join(', '),
+      packetFileId: savedPacket.fileId || '',
+      packetUrl: savedPacket.url || '',
+      packetMime: savedPacket.mime || 'application/pdf'
+    };
+    await addPaymentRecord(record);
+    await _persistPaymentStatus(selected, {
+      paymentStatus: 'EN_PREPARACION_PAGO',
+      paymentBatchId,
+      paymentDate,
+      paymentRef,
+      paymentBy,
+      paymentNotes
+    });
+    await addAudit('PAGO_PREPARADO', paymentBy, { paymentBatchId, rows: rowIndexes, totalAmount: record.totalAmount, paymentRef });
+    state.payments = await getPayments();
+
+    clearContaSelection();
+    filterConta();
+    _renderPaymentBatches();
+    toast(`${selected.length} documento${selected.length === 1 ? '' : 's'} enviado${selected.length === 1 ? '' : 's'} a preparación de pago.`, 'success');
+    printPaymentPacket(printWindow, paymentPayload);
+  } catch (e) {
+    if (!printWindow.closed) printWindow.close();
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function finalizePaymentBatch(paymentRowIndex) {
+  const payment = state.payments.find(item => item.rowIndex === paymentRowIndex);
+  if (!payment || payment.paymentStatus !== 'EN_PREPARACION_PAGO') {
+    toast('El lote seleccionado no está disponible para finalizar.', 'info');
+    return;
+  }
+
+  const expenses = _getPaymentExpenses(payment);
+  if (!expenses.length) {
+    toast('No se encontraron documentos asociados al lote.', 'error');
+    return;
+  }
+
+  loading(true);
+  try {
+    await _persistPaymentStatus(expenses, {
+      paymentStatus: 'PAGADO',
+      paymentBatchId: payment.paymentBatchId,
+      paymentDate: payment.paymentDate,
+      paymentRef: payment.paymentRef,
+      paymentBy: payment.processedBy,
+      paymentNotes: payment.paymentNotes
+    });
+    const updatedPayment = { ...payment, paymentStatus: 'PAGADO' };
+    await updatePaymentRecord(payment.rowIndex, updatedPayment);
+    await addAudit('PAGO_FINALIZADO', getCurrentUser()?.email || payment.processedBy, { paymentBatchId: payment.paymentBatchId, rows: expenses.map(exp => exp.rowIndex) });
+    Object.assign(payment, updatedPayment);
+    filterConta();
+    _renderPaymentBatches();
+    toast(`Lote ${payment.paymentBatchId} marcado como pagado.`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function cancelPaymentBatch(paymentRowIndex) {
+  const payment = state.payments.find(item => item.rowIndex === paymentRowIndex);
+  if (!payment || (payment.paymentStatus !== 'EN_PREPARACION_PAGO' && payment.paymentStatus !== 'PAGADO')) {
+    toast('El lote seleccionado no puede anularse.', 'info');
+    return;
+  }
+
+  const expenses = _getPaymentExpenses(payment);
+  if (!expenses.length) {
+    toast('No se encontraron documentos asociados al lote.', 'error');
+    return;
+  }
+
+  loading(true);
+  try {
+    await _persistPaymentStatus(expenses, {
+      paymentStatus: 'ANULADO_PAGO',
+      paymentBatchId: payment.paymentBatchId,
+      paymentDate: payment.paymentDate,
+      paymentRef: payment.paymentRef,
+      paymentBy: payment.processedBy,
+      paymentNotes: payment.paymentNotes
+    });
+    const updatedPayment = { ...payment, paymentStatus: 'ANULADO_PAGO' };
+    await updatePaymentRecord(payment.rowIndex, updatedPayment);
+    await addAudit('PAGO_ANULADO', getCurrentUser()?.email || payment.processedBy, { paymentBatchId: payment.paymentBatchId, rows: expenses.map(exp => exp.rowIndex) });
+    Object.assign(payment, updatedPayment);
+    filterConta();
+    _renderPaymentBatches();
+    toast(`Lote ${payment.paymentBatchId} anulado correctamente.`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function reprintPaymentBatch(paymentRowIndex) {
+  const payment = state.payments.find(item => item.rowIndex === paymentRowIndex);
+  if (!payment) {
+    toast('Lote no encontrado.', 'error');
+    return;
+  }
+  if (payment.packetUrl) {
+    window.open(payment.packetUrl, '_blank', 'noopener,noreferrer');
+    return;
+  }
+
+  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+  if (!printWindow) {
+    toast('El navegador bloqueó la ventana de impresión.', 'error');
+    return;
+  }
+  try {
+    const expenses = await _buildPaymentPrintSnapshot(_getPaymentExpenses(payment));
+    printPaymentPacket(printWindow, {
+      paymentBatchId: payment.paymentBatchId,
+      paymentDate: payment.paymentDate,
+      paymentRef: payment.paymentRef,
+      paymentNotes: payment.paymentNotes,
+      paymentBy: payment.processedBy,
+      paymentByName: _getUserName(payment.processedBy),
+      expenses
+    });
+  } catch (e) {
+    if (!printWindow.closed) printWindow.close();
+    toast(e.message, 'error');
+  }
+}
+
+async function generatePaymentPacket() {
+  return preparePaymentBatch();
 }
 
 function _groupAndSum(exps, field) {
@@ -2355,12 +2940,13 @@ function _renderBreakdown(entries, grandTotal) {
 
 function exportContaCSV() {
   const exps = state.expenses.filter(e => e.status === 'AUTORIZADO');
-  const headers = ['N° Folio','Fecha','Tipo Doc','N° Documento','Proveedor','Categoría','Concepto','Empleado','Total','Autorizado por','Observaciones'];
+  const headers = ['N° Folio','Fecha','Tipo Doc','N° Documento','Proveedor','Categoría','Concepto','Empleado','Total','Estado pago','Fecha pago','Referencia pago','Lote pago','Pagado por','Observaciones pago','Autorizado por','Observaciones'];
   const rows = exps.map(e => [
     e.docNumber || '—',
     e.fechaGasto, e.docType, e.docNumber, e.provider,
     e.category, e.title, e.email, e.total,
-    e.approverEmail, e.observations
+    _getPaymentStatusLabel(_getPaymentStatus(e)), e.paymentDate, e.paymentRef,
+    e.paymentBatchId, e.paymentBy, e.paymentNotes, e.approverEmail, e.observations
   ].map(v => `"${(v||'').toString().replace(/"/g,'""')}"`));
   const csv = '\uFEFF' + [headers.map(h=>`"${h}"`), ...rows].map(r => r.join(',')).join('\n');
   const a = Object.assign(document.createElement('a'), {

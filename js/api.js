@@ -40,7 +40,13 @@ function _rowToExpense(row, rowIndex) {
     provider:      String(row[15] || ''),
     batchName:     String(row[16] || ''),
     costCenter:    String(row[17] || ''),
-    empresa:       String(row[18] || '')
+    empresa:       String(row[18] || ''),
+    paymentStatus: String(row[19] || ''),
+    paymentBatchId:String(row[20] || ''),
+    paymentDate:   String(row[21] || ''),
+    paymentRef:    String(row[22] || ''),
+    paymentBy:     String(row[23] || '').toLowerCase(),
+    paymentNotes:  String(row[24] || '')
   };
 }
 
@@ -63,7 +69,13 @@ function _expenseToRow(exp, userEmail, empresa) {
     exp.provider   || '',     // P Provider
     exp.batchName  || '',     // Q BatchName
     exp.costCenter || '',     // R CostCenter
-    empresa        || ''      // S Empresa
+    empresa        || '',     // S Empresa
+    '',                       // T PaymentStatus
+    '',                       // U PaymentBatchId
+    '',                       // V PaymentDate
+    '',                       // W PaymentReference
+    '',                       // X PaymentBy
+    ''                        // Y PaymentNotes
   ];
 }
 
@@ -71,7 +83,7 @@ function _tryJson(str, def) { try { return JSON.parse(str); } catch { return def
 
 // ─── CRUD Gastos ─────────────────────────────
 async function getExpenses() {
-  const rows = await sheetsGet('Rendiciones!A2:S');
+  const rows = await sheetsGet('Rendiciones!A2:Y');
   return rows.map((r, i) => _rowToExpense(r, i + 2));
 }
 
@@ -86,6 +98,106 @@ async function updateExpenseStatus(rowIndex, status, observations, approverEmail
     { range: `Rendiciones!${col(12)}${rowIndex}`, values: [[observations]] },
     { range: `Rendiciones!${col(13)}${rowIndex}`, values: [[approverEmail]] }
   ]);
+}
+
+async function updateExpensePayment(rowIndex, payment) {
+  const col = n => String.fromCharCode(64 + n);
+  const payload = payment || {};
+  return sheetsBatchUpdate([
+    { range: `Rendiciones!${col(20)}${rowIndex}`, values: [[payload.paymentStatus || '']] },
+    { range: `Rendiciones!${col(21)}${rowIndex}`, values: [[payload.paymentBatchId || '']] },
+    { range: `Rendiciones!${col(22)}${rowIndex}`, values: [[payload.paymentDate || '']] },
+    { range: `Rendiciones!${col(23)}${rowIndex}`, values: [[payload.paymentRef || '']] },
+    { range: `Rendiciones!${col(24)}${rowIndex}`, values: [[payload.paymentBy || '']] },
+    { range: `Rendiciones!${col(25)}${rowIndex}`, values: [[payload.paymentNotes || '']] }
+  ]);
+}
+
+function _rowToPayment(row, rowIndex) {
+  return {
+    rowIndex,
+    paymentBatchId: String(row[0] || ''),
+    createdAt: String(row[1] || ''),
+    paymentStatus: String(row[2] || ''),
+    paymentDate: String(row[3] || ''),
+    payeeEmail: String(row[4] || '').toLowerCase(),
+    payeeName: String(row[5] || ''),
+    documentCount: parseInt(row[6], 10) || 0,
+    totalAmount: parseFloat(row[7]) || 0,
+    paymentRef: String(row[8] || ''),
+    paymentNotes: String(row[9] || ''),
+    processedBy: String(row[10] || '').toLowerCase(),
+    expenseRowsJson: String(row[11] || ''),
+    folios: String(row[12] || ''),
+    packetFileId: String(row[13] || ''),
+    packetUrl: String(row[14] || ''),
+    packetMime: String(row[15] || '')
+  };
+}
+
+function _paymentToRow(payment) {
+  const payload = payment || {};
+  return [
+    payload.paymentBatchId || '',
+    payload.createdAt || new Date().toISOString(),
+    payload.paymentStatus || 'EN_PREPARACION_PAGO',
+    payload.paymentDate || '',
+    payload.payeeEmail || '',
+    payload.payeeName || '',
+    payload.documentCount || 0,
+    payload.totalAmount || 0,
+    payload.paymentRef || '',
+    payload.paymentNotes || '',
+    payload.processedBy || '',
+    payload.expenseRowsJson || '',
+    payload.folios || '',
+    payload.packetFileId || '',
+    payload.packetUrl || '',
+    payload.packetMime || ''
+  ];
+}
+
+async function ensurePaymentsSheet() {
+  const headers = ['paymentBatchId','createdAt','paymentStatus','paymentDate','payeeEmail','payeeName','documentCount','totalAmount','paymentRef','paymentNotes','processedBy','expenseRowsJson','folios','packetFileId','packetUrl','packetMime'];
+  await _ensureSheet('Pagos');
+  const rows = await sheetsGet('Pagos!A1:P');
+  if (!rows.length) {
+    await sheetsAppend('Pagos', headers);
+  }
+}
+
+async function getPayments() {
+  await ensurePaymentsSheet();
+  const rows = await sheetsGet('Pagos!A2:P');
+  return rows.map((r, i) => _rowToPayment(r, i + 2)).filter(p => p.paymentBatchId);
+}
+
+async function addPaymentRecord(payment) {
+  await ensurePaymentsSheet();
+  return sheetsAppend('Pagos', _paymentToRow(payment));
+}
+
+async function updatePaymentRecord(rowIndex, payment) {
+  await ensurePaymentsSheet();
+  return sheetsBatchUpdate([
+    { range: `Pagos!A${rowIndex}:P${rowIndex}`, values: [_paymentToRow(payment)] }
+  ]);
+}
+
+async function savePaymentPacket(paymentBatchId, html) {
+  const body = {
+    action: 'savePaymentPacket',
+    token: getSessionToken(),
+    params: { paymentBatchId, html }
+  };
+  const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error('Error al guardar comprobante (' + res.status + ')');
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 // ─── Datos de referencia ──────────────────────
@@ -320,41 +432,8 @@ Si no puedes determinar algún campo con seguridad, usa null. Responde ÚNICAMEN
 async function sendReceipt(expense, toEmail) {
   const recipient = toEmail || CONFIG.RECEIPTS_EMAIL;
   if (!recipient) return;
-
-  const isOwner     = recipient.toLowerCase() === expense.email.toLowerCase();
-  const statusLabel = { APROBADO: 'aprobada ✅', AUTORIZADO: 'autorizada ✅', RECHAZADO: 'rechazada ❌' }[expense.status] || expense.status;
-  const statusColor = { APROBADO: '#16a34a', AUTORIZADO: '#7c3aed', RECHAZADO: '#dc2626', PENDIENTE: '#d97706' }[expense.status] || '#6b7280';
-  const monto = '$' + Number(expense.total).toLocaleString('es-CL');
-
-  const html = `
-<div style="font-family:Arial,sans-serif;max-width:580px;margin:0 auto;color:#111827">
-  <div style="background:#1e40af;padding:24px;border-radius:10px 10px 0 0">
-    <h1 style="margin:0;color:#fff;font-size:18px">Comprobante de Rendición de Gastos</h1>
-  </div>
-  <div style="border:1px solid #e5e7eb;border-top:0;padding:24px;border-radius:0 0 10px 10px">
-    <table style="width:100%;border-collapse:collapse;font-size:14px">
-      <tr style="border-bottom:1px solid #f3f4f6"><td style="padding:9px 0;color:#6b7280;width:130px">Empleado</td><td style="padding:9px 0">${expense.email}</td></tr>
-      <tr style="border-bottom:1px solid #f3f4f6"><td style="padding:9px 0;color:#6b7280">Concepto</td><td style="padding:9px 0;font-weight:bold">${expense.title}</td></tr>
-      <tr style="border-bottom:1px solid #f3f4f6"><td style="padding:9px 0;color:#6b7280">Categoría</td><td style="padding:9px 0">${expense.category}</td></tr>
-      <tr style="border-bottom:1px solid #f3f4f6"><td style="padding:9px 0;color:#6b7280">Fecha gasto</td><td style="padding:9px 0">${expense.fechaGasto}</td></tr>
-      <tr style="border-bottom:1px solid #f3f4f6"><td style="padding:9px 0;color:#6b7280">Documento</td><td style="padding:9px 0">${expense.docType} ${expense.docNumber || ''}</td></tr>
-      <tr style="border-bottom:1px solid #f3f4f6"><td style="padding:9px 0;color:#6b7280">Proveedor</td><td style="padding:9px 0">${expense.provider || '—'}</td></tr>
-      <tr style="border-bottom:1px solid #f3f4f6"><td style="padding:9px 0;color:#6b7280">Monto</td><td style="padding:9px 0;font-size:20px;font-weight:bold">${monto}</td></tr>
-      <tr><td style="padding:9px 0;color:#6b7280">Estado</td>
-          <td style="padding:9px 0"><span style="background:${statusColor};color:#fff;padding:3px 12px;border-radius:12px;font-size:12px;font-weight:bold">${expense.status}</span></td></tr>
-      ${expense.observations ? `<tr><td style="padding:9px 0;color:#6b7280">Observaciones</td><td style="padding:9px 0">${expense.observations}</td></tr>` : ''}
-    </table>
-  </div>
-  <p style="font-size:11px;color:#9ca3af;margin-top:12px">Rindegastos &bull; ${new Date().toLocaleString('es-CL')}</p>
-</div>`;
-
-  const subject = isOwner
-    ? `Tu rendición fue ${statusLabel} — ${expense.title}`
-    : `[Rindegastos] ${expense.status} - ${expense.title}`;
-
-  return callBackend('sendEmail', {
-    to:       recipient,
-    subject,
-    htmlBody: html
+  return callBackend('sendReceiptEmail', {
+    rowIndex: expense.rowIndex,
+    to: recipient
   });
 }
