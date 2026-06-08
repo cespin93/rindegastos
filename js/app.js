@@ -2590,61 +2590,117 @@ async function _buildPaymentPrintSnapshot(expenses) {
 
 function _buildPaymentAttachments(expenses) {
   const sections = [];
+  let totalReceipts = 0;
+  expenses.forEach(exp => {
+    const r = Array.isArray(exp.receipts) ? exp.receipts : [];
+    totalReceipts += r.length || 1;
+  });
   let idx = 1;
-  const total = expenses.length;
 
   expenses.forEach((exp, expIdx) => {
     const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
-    const expRef = `${_escapeHtml(exp.docType || 'DOC')} ${_escapeHtml(exp.docNumber || 'S/F')} · ${_escapeHtml(exp.provider || 'Sin proveedor')} · ${fmt(exp.total)}`;
+    const docRef   = `${_escapeHtml(exp.docType || 'DOC')} ${_escapeHtml(exp.docNumber || 'S/F')}`;
+    const provRef  = `${_escapeHtml(exp.provider || 'Sin proveedor')} · ${fmt(exp.total)}`;
+
+    const _header = (label) => `
+      <div style="flex-shrink:0;display:flex;justify-content:space-between;align-items:center;
+                  background:#1e3a8a;color:#fff;padding:8px 18px;">
+        <div>
+          <span style="font-size:9px;opacity:.7;text-transform:uppercase;letter-spacing:.07em">
+            Respaldo ${label}
+          </span>
+          <div style="font-size:13px;font-weight:800;margin-top:1px">${docRef} · ${provRef}</div>
+        </div>
+        <div style="text-align:right;font-size:10px;opacity:.8">
+          ${_escapeHtml(exp.title)}<br>${fmtDate(exp.fechaGasto)}
+        </div>
+      </div>`;
 
     if (!receipts.length) {
       sections.push(`
-        <section style="page-break-after:always;padding:28px 32px;font-family:Arial,sans-serif;color:#111827">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;border-bottom:1px solid #e5e7eb;padding-bottom:5px;margin-bottom:12px">
-            Respaldo ${idx} de ${total}
+        <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
+                    font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
+          ${_header(`${idx} de ${totalReceipts}`)}
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;
+                      background:#f8fafc;flex-direction:column;gap:8px;color:#9ca3af">
+            <div style="font-size:36px">📄</div>
+            <div style="font-size:13px;font-weight:600">Sin archivos adjuntos</div>
+            <div style="font-size:11px">Este documento no tiene comprobantes digitales adjuntos</div>
           </div>
-          <div style="font-size:14px;font-weight:800;margin-bottom:3px">Rendición ${expIdx + 1}: ${expRef}</div>
-          <div style="font-size:12px;color:#6b7280;margin-bottom:20px">${_escapeHtml(exp.title)} · ${_escapeHtml(exp.category)}</div>
-          <p style="color:#9ca3af;font-style:italic">Sin archivos adjuntos para este documento.</p>
-        </section>`);
+        </div>`);
       idx++;
       return;
     }
 
     receipts.forEach((receipt, rIdx) => {
-      const label = `Respaldo ${idx} de ${total}${receipts.length > 1 ? ` (adjunto ${rIdx + 1}/${receipts.length})` : ''}`;
+      const label  = receipts.length > 1 ? `${idx} de ${totalReceipts} (${rIdx + 1}/${receipts.length})` : `${idx} de ${totalReceipts}`;
       const source = receipt.inlineUrl || receipt.url || '';
-      const mime = String(receipt.mime || '');
+      const mime   = String(receipt.mime || '');
+      const fname  = receipt.name || '—';
       let body;
 
       if (receipt.loadError) {
-        body = `<p style="color:#dc2626">No se pudo cargar el adjunto: ${_escapeHtml(receipt.loadError)}</p>`;
+        body = `
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:10px;padding:32px;text-align:center">
+            <div style="font-size:32px">⚠️</div>
+            <div style="font-size:14px;font-weight:700;color:#dc2626">No se pudo cargar el adjunto</div>
+            <div style="font-size:12px;color:#6b7280;max-width:400px">${_escapeHtml(receipt.loadError)}</div>
+            ${receipt.url ? `<a href="${_escapeHtml(receipt.url)}" target="_blank"
+              style="margin-top:8px;background:#1e40af;color:#fff;padding:8px 20px;
+                     border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
+              Abrir en Drive ↗</a>` : ''}
+          </div>`;
       } else if (source && mime.startsWith('image/')) {
-        body = `<img src="${source}" alt="${_escapeHtml(receipt.name || label)}"
-                  style="max-width:100%;max-height:940px;display:block;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px">`;
-      } else if (source && mime.includes('pdf')) {
-        body = `<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;height:940px;background:#fff">
-                  <iframe src="${source}#toolbar=0&navpanes=0&scrollbar=0"
-                    title="${_escapeHtml(receipt.name || label)}"
-                    style="width:100%;height:100%;border:none"></iframe>
-                </div>`;
+        body = `
+          <img src="${source}" alt="${_escapeHtml(fname)}"
+               style="width:100%;height:100%;object-fit:contain;display:block">`;
+      } else if (mime.includes('pdf') || fname.toLowerCase().endsWith('.pdf')) {
+        const driveUrl = receipt.url || source;
+        body = `
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:12px;padding:40px;text-align:center;background:#f0f4ff">
+            <div style="font-size:56px">📑</div>
+            <div style="font-size:16px;font-weight:800;color:#1e3a8a">${_escapeHtml(fname)}</div>
+            <div style="font-size:12px;color:#6b7280">
+              Archivo PDF · ${_escapeHtml(exp.docType || '')} ${_escapeHtml(exp.docNumber || '')} · ${_escapeHtml(exp.provider || '')}
+            </div>
+            <div style="font-size:11px;color:#9ca3af;border:1px solid #d1d5db;border-radius:6px;
+                        padding:6px 14px;background:#fff">
+              Los archivos PDF se visualizan directamente en Google Drive
+            </div>
+            ${driveUrl ? `<a href="${_escapeHtml(driveUrl)}" target="_blank"
+              style="background:#1e3a8a;color:#fff;padding:10px 28px;border-radius:10px;
+                     text-decoration:none;font-size:13px;font-weight:700;margin-top:4px">
+              Abrir PDF en Drive ↗</a>` : ''}
+          </div>`;
       } else if (source) {
-        body = `<p><a href="${source}" target="_blank" rel="noopener" style="color:#1d4ed8">Abrir archivo: ${_escapeHtml(receipt.name || label)}</a></p>`;
+        body = `
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:32px">
+            <div style="font-size:36px">📎</div>
+            <div style="font-size:13px;font-weight:700">${_escapeHtml(fname)}</div>
+            <a href="${_escapeHtml(source)}" target="_blank"
+               style="background:#1e40af;color:#fff;padding:8px 20px;border-radius:8px;
+                      text-decoration:none;font-size:12px;font-weight:700">
+              Abrir archivo ↗</a>
+          </div>`;
       } else {
-        body = `<p style="color:#9ca3af;font-style:italic">Adjunto sin URL disponible.</p>`;
+        body = `
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;
+                      padding:32px;color:#9ca3af">
+            <div style="font-size:32px">🔗</div>
+            <div style="font-size:12px">Adjunto sin URL disponible</div>
+          </div>`;
       }
 
       sections.push(`
-        <section style="page-break-after:always;padding:28px 32px;font-family:Arial,sans-serif;color:#111827">
-          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;border-bottom:1px solid #e5e7eb;padding-bottom:5px;margin-bottom:10px">
-            ${label}
+        <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
+                    font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
+          ${_header(label)}
+          <div style="flex:1;overflow:hidden;background:#fff">
+            ${body}
           </div>
-          <div style="font-size:13px;font-weight:800;margin-bottom:2px">Rendición ${expIdx + 1}: ${expRef}</div>
-          <div style="font-size:11px;color:#6b7280;margin-bottom:14px">
-            ${_escapeHtml(exp.title)} · Categoría: ${_escapeHtml(exp.category)} · Fecha: ${fmtDate(exp.fechaGasto)} · Archivo: ${_escapeHtml(receipt.name || '—')}
-          </div>
-          ${body}
-        </section>`);
+        </div>`);
       idx++;
     });
   });
@@ -2652,10 +2708,9 @@ function _buildPaymentAttachments(expenses) {
 }
 
 function _buildPaymentPacketHtml(payload, options = {}) {
-  const payment = payload || {};
+  const payment  = payload || {};
   const expenses = Array.isArray(payment.expenses) ? payment.expenses : [];
   if (!expenses.length) return '';
-  const autoPrint = !!options.autoPrint;
 
   const ownerEmail = expenses[0].email || '';
   const ownerName  = _getUserName(ownerEmail) || ownerEmail;
@@ -2664,16 +2719,20 @@ function _buildPaymentPacketHtml(payload, options = {}) {
   const emitDate   = fmtDate(new Date().toISOString().split('T')[0]);
 
   const rows = expenses.map((exp, i) => `
-    <tr style="${i % 2 === 1 ? 'background:#f8fafc' : ''}">
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb;text-align:center">${i + 1}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${fmtDate(exp.fechaGasto)}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docType || '—')}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docNumber || '—')}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.provider || '—')}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.category || '—')}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.title || '—')}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb;font-size:10px">${_escapeHtml(_getUserName(exp.approverEmail) || exp.approverEmail || '—')}</td>
-      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${fmt(exp.total)}</td>
+    <tr>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b">${i + 1}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;white-space:nowrap">${fmtDate(exp.fechaGasto)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0">
+        <span style="background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700">
+          ${_escapeHtml(exp.docType || '—')}
+        </span>
+      </td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1e3a8a">${_escapeHtml(exp.docNumber || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0">${_escapeHtml(exp.provider || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;color:#64748b">${_escapeHtml(exp.category || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0">${_escapeHtml(exp.title || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:10px">${_escapeHtml(_getUserName(exp.approverEmail) || exp.approverEmail || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#111827">${fmt(exp.total)}</td>
     </tr>`).join('');
 
   const attachments = _buildPaymentAttachments(expenses);
@@ -2684,111 +2743,157 @@ function _buildPaymentPacketHtml(payload, options = {}) {
   <meta charset="utf-8">
   <title>Comprobante ${_escapeHtml(payment.paymentBatchId || '')}</title>
   <style>
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:12px}
-    .page{page-break-after:always;padding:28px 32px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e40af;margin-bottom:18px}
-    .chip{display:inline-block;background:#1e40af;color:#fff;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.06em;margin-bottom:6px}
-    .header-title{font-size:20px;font-weight:800;color:#1e40af;margin:4px 0 3px}
-    .header-sub{font-size:11px;color:#6b7280}
-    .total-hdr .lbl{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}
-    .total-hdr .amt{font-size:26px;font-weight:800;color:#1e40af;line-height:1.1;margin-top:2px;text-align:right}
-    .sec{margin-top:16px}
-    .sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;border-bottom:1px solid #e5e7eb;padding-bottom:4px;margin-bottom:8px}
-    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-    .ic .lbl{font-size:10px;color:#9ca3af;margin-bottom:2px}
-    .ic .val{font-size:12px;font-weight:700;word-break:break-all}
-    table{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px}
-    thead th{background:#1e40af;color:#fff;padding:7px 5px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
-    .total-row td{font-weight:800;font-size:13px;border-top:2px solid #1e40af;background:#eff6ff;padding:9px 5px}
-    .sigs{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
-    .sig{border:1px solid #d1d5db;border-radius:8px;padding:10px 14px;min-height:82px}
-    .sig strong{display:block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px}
-    .sig .sn{font-size:12px;font-weight:700}
-    .sig .sl{border-bottom:1px solid #d1d5db;margin-top:30px}
-    .sig .se{font-size:9px;color:#9ca3af;margin-top:3px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:12px;background:#fff}
+    table{width:100%;border-collapse:collapse;font-size:11px}
     @media print{body{background:#fff}}
   </style>
 </head>
 <body>
-<div class="page">
-  <div class="header">
+
+<!-- ── PÁGINA 1: DESGLOSE ── -->
+<div style="page-break-after:always;font-family:Arial,Helvetica,sans-serif">
+
+  <!-- Cabecera azul oscuro -->
+  <div style="background:#1e3a8a;color:#fff;padding:20px 28px;display:flex;justify-content:space-between;align-items:center">
     <div>
-      <div class="chip">COMPROBANTE DE PAGO · ${_escapeHtml(payment.paymentBatchId || 'SIN ID')}</div>
-      <div class="header-title">Rendición de Gastos</div>
-      <div class="header-sub">Emitido el ${emitDate} · Empresa: ${_escapeHtml(empresa)} · Procesado por: ${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+      <div style="font-size:10px;opacity:.65;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">
+        Rindegastos · ${_escapeHtml(empresa)}
+      </div>
+      <div style="font-size:22px;font-weight:800;letter-spacing:-.3px">Comprobante de Pago</div>
+      <div style="font-size:11px;opacity:.75;margin-top:3px">
+        Emitido el ${emitDate} &nbsp;·&nbsp; Lote: <strong>${_escapeHtml(payment.paymentBatchId || '—')}</strong>
+      </div>
     </div>
-    <div class="total-hdr">
-      <div class="lbl">Total a transferir</div>
-      <div class="amt">${fmt(total)}</div>
-    </div>
-  </div>
-
-  <div class="sec">
-    <div class="sec-title">Datos del rendidor</div>
-    <div class="grid3">
-      <div class="ic"><div class="lbl">Nombre</div><div class="val">${_escapeHtml(ownerName)}</div></div>
-      <div class="ic"><div class="lbl">Email</div><div class="val">${_escapeHtml(ownerEmail)}</div></div>
-      <div class="ic"><div class="lbl">Empresa</div><div class="val">${_escapeHtml(empresa)}</div></div>
+    <!-- Total destacado -->
+    <div style="text-align:right">
+      <div style="font-size:10px;opacity:.65;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Total a transferir</div>
+      <div style="font-size:32px;font-weight:800;letter-spacing:-.5px">${fmt(total)}</div>
+      <div style="font-size:10px;opacity:.65;margin-top:2px">${expenses.length} documento${expenses.length === 1 ? '' : 's'} autorizado${expenses.length === 1 ? '' : 's'}</div>
     </div>
   </div>
 
-  <div class="sec">
-    <div class="sec-title">Datos del pago</div>
-    <div class="grid4">
-      <div class="ic"><div class="lbl">Fecha transferencia</div><div class="val">${fmtDate(payment.paymentDate || '')}</div></div>
-      <div class="ic"><div class="lbl">Referencia / N° Transferencia</div><div class="val">${_escapeHtml(payment.paymentRef || '—')}</div></div>
-      <div class="ic"><div class="lbl">N° documentos</div><div class="val">${expenses.length}</div></div>
-      <div class="ic"><div class="lbl">Observaciones</div><div class="val">${_escapeHtml(payment.paymentNotes || '—')}</div></div>
-    </div>
-  </div>
+  <!-- Franja acento -->
+  <div style="height:4px;background:linear-gradient(90deg,#3b82f6,#06b6d4)"></div>
 
-  <div class="sec">
-    <div class="sec-title">Desglose de rendiciones autorizadas</div>
-    <table>
-      <thead>
-        <tr>
-          <th style="width:24px">#</th>
-          <th style="width:68px">Fecha</th>
-          <th style="width:50px">Tipo Doc</th>
-          <th style="width:62px">N° Folio</th>
-          <th>Proveedor</th>
-          <th>Categoría</th>
-          <th>Concepto</th>
-          <th style="width:88px">Autorizado por</th>
-          <th style="width:76px;text-align:right">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${rows}
-        <tr class="total-row">
-          <td colspan="8" style="text-align:right;padding-right:8px">TOTAL A TRANSFERIR</td>
-          <td style="text-align:right">${fmt(total)}</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  <!-- Cuerpo principal -->
+  <div style="padding:20px 28px">
 
-  <div class="sigs">
-    <div class="sig">
-      <strong>Recibe conforme (Rendidor)</strong>
-      <div class="sn">${_escapeHtml(ownerName)}</div>
-      <div class="sl"></div>
-      <div class="se">${_escapeHtml(ownerEmail)}</div>
+    <!-- Dos columnas: rendidor + datos pago -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+
+      <!-- Card rendidor -->
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div style="background:#f1f5f9;padding:8px 14px;font-size:10px;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.07em;color:#475569;
+                    border-bottom:1px solid #e2e8f0">
+          Datos del rendidor
+        </div>
+        <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Nombre</div>
+            <div style="font-size:13px;font-weight:800;color:#1e3a8a">${_escapeHtml(ownerName)}</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Empresa</div>
+            <div style="font-size:12px;font-weight:700">${_escapeHtml(empresa)}</div>
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Correo</div>
+            <div style="font-size:11px;color:#475569">${_escapeHtml(ownerEmail)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card datos del pago -->
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div style="background:#f1f5f9;padding:8px 14px;font-size:10px;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.07em;color:#475569;
+                    border-bottom:1px solid #e2e8f0">
+          Datos del pago
+        </div>
+        <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Fecha transferencia</div>
+            <div style="font-size:12px;font-weight:700">${fmtDate(payment.paymentDate || '')}</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Procesado por</div>
+            <div style="font-size:12px;font-weight:700">${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Referencia / N° Transferencia</div>
+            <div style="font-size:12px;font-weight:800;color:#1e3a8a">${_escapeHtml(payment.paymentRef || '—')}</div>
+          </div>
+          ${payment.paymentNotes ? `
+          <div style="grid-column:1/-1">
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Observaciones</div>
+            <div style="font-size:11px;color:#475569">${_escapeHtml(payment.paymentNotes)}</div>
+          </div>` : ''}
+        </div>
+      </div>
     </div>
-    <div class="sig">
-      <strong>Autoriza transferencia</strong>
-      <div class="sn">${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
-      <div class="sl"></div>
-      <div class="se">${_escapeHtml(payment.paymentBy || '')}</div>
+
+    <!-- Tabla desglose -->
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:18px">
+      <div style="background:#f1f5f9;padding:8px 14px;font-size:10px;font-weight:700;
+                  text-transform:uppercase;letter-spacing:.07em;color:#475569;
+                  border-bottom:1px solid #e2e8f0">
+        Desglose de rendiciones autorizadas
+      </div>
+      <table>
+        <thead>
+          <tr style="background:#1e3a8a;color:#fff">
+            <th style="padding:8px 6px;text-align:center;width:22px;font-size:10px">#</th>
+            <th style="padding:8px 6px;width:66px;font-size:10px">Fecha</th>
+            <th style="padding:8px 6px;width:52px;font-size:10px">Tipo</th>
+            <th style="padding:8px 6px;width:72px;font-size:10px">N° Folio</th>
+            <th style="padding:8px 6px;font-size:10px">Proveedor</th>
+            <th style="padding:8px 6px;font-size:10px">Categoría</th>
+            <th style="padding:8px 6px;font-size:10px">Concepto</th>
+            <th style="padding:8px 6px;width:84px;font-size:10px">Autorizado por</th>
+            <th style="padding:8px 6px;width:74px;text-align:right;font-size:10px">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+          <!-- Fila total -->
+          <tr style="background:#1e3a8a;color:#fff">
+            <td colspan="8" style="padding:10px 6px;text-align:right;font-weight:700;font-size:12px;
+                                   text-transform:uppercase;letter-spacing:.04em">
+              Total a transferir
+            </td>
+            <td style="padding:10px 6px;text-align:right;font-weight:800;font-size:15px">
+              ${fmt(total)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-  </div>
-</div>
+
+    <!-- Firmas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;min-height:88px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+                    color:#94a3b8;margin-bottom:8px">Recibe conforme · Rendidor</div>
+        <div style="font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:28px">${_escapeHtml(ownerName)}</div>
+        <div style="border-bottom:1px solid #cbd5e1"></div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:5px">${_escapeHtml(ownerEmail)}</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;min-height:88px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+                    color:#94a3b8;margin-bottom:8px">Autoriza transferencia</div>
+        <div style="font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:28px">${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+        <div style="border-bottom:1px solid #cbd5e1"></div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:5px">${_escapeHtml(payment.paymentBy || '')}</div>
+      </div>
+    </div>
+
+  </div><!-- /cuerpo -->
+</div><!-- /página 1 -->
 
 ${attachments}
 
-${autoPrint ? `<script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});<\/script>` : ''}
 </body>
 </html>`;
 }
