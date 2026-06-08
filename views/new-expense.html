@@ -38,19 +38,13 @@
         </div>
         <div>
           <label for="f-total">Monto (CLP) *</label>
-             <input id="f-total" name="total" type="text" required
-               placeholder="$0" class="input-field"
-               inputmode="numeric" data-money-input="true" autocomplete="off">
+           <input id="f-total" name="total" type="text" required
+             placeholder="$0" class="input-field"
+             inputmode="numeric" data-money-input="true" autocomplete="off">
         </div>
         <div>
           <label for="form-category">Categoría *</label>
           <select id="form-category" name="category" required class="input-field">
-            <option value="">— Seleccionar —</option>
-          </select>
-        </div>
-        <div>
-          <label for="form-company">Empresa *</label>
-          <select id="form-company" name="empresa" required class="input-field" onchange="handleExpenseCompanyChange(this.value)">
             <option value="">— Seleccionar —</option>
           </select>
         </div>
@@ -152,12 +146,6 @@
           <label for="bulk-batch-name">Nombre del conjunto *</label>
           <input id="bulk-batch-name" type="text" class="input-field"
                  placeholder="Ej: Rendición Fondo Fijo Marzo" required>
-        </div>
-        <div style="flex:1;min-width:200px">
-          <label for="bulk-company">Empresa *</label>
-          <select id="bulk-company" class="input-field" required onchange="handleExpenseCompanyChange(this.value)">
-            <option value="">— Seleccionar —</option>
-          </select>
         </div>
         <div style="flex:1;min-width:200px">
           <label for="bulk-approver">Aprobador</label>
