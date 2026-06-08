@@ -2563,10 +2563,45 @@ function toggleContaSelection(rowIndex) {
   _renderConta(_contaFiltered);
 }
 
+function _loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = () => reject(new Error('No se pudo cargar PDF.js'));
+    document.head.appendChild(s);
+  });
+}
+
+async function _pdfToImages(base64data, scale = 2) {
+  const lib = await _loadPdfJs();
+  const raw = atob(base64data);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+
+  const pdf = await lib.getDocument({ data: bytes }).promise;
+  const images = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page     = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale });
+    const canvas   = document.createElement('canvas');
+    canvas.width   = viewport.width;
+    canvas.height  = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    images.push(canvas.toDataURL('image/jpeg', 0.88));
+  }
+  return images;
+}
+
 async function _buildPaymentPrintSnapshot(expenses) {
   const snapshot = [];
   for (const exp of expenses) {
-    const cloned = { ...exp, receipts: [] };
+    const cloned   = { ...exp, receipts: [] };
     const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
     for (const receipt of receipts) {
       const clonedReceipt = { ...receipt };
@@ -2574,8 +2609,17 @@ async function _buildPaymentPrintSnapshot(expenses) {
         try {
           const content = await getReceiptContent(receipt.id);
           if (content?.data && content?.mime) {
-            clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
-            clonedReceipt.mime = content.mime;
+            if (content.mime.includes('pdf')) {
+              try {
+                clonedReceipt.pdfImages = await _pdfToImages(content.data);
+              } catch {
+                clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
+              }
+              clonedReceipt.mime = content.mime;
+            } else {
+              clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
+              clonedReceipt.mime = content.mime;
+            }
           }
         } catch (err) {
           clonedReceipt.loadError = err.message;
@@ -2633,10 +2677,34 @@ function _buildPaymentAttachments(expenses) {
     }
 
     receipts.forEach((receipt, rIdx) => {
-      const label  = receipts.length > 1 ? `${idx} de ${totalReceipts} (${rIdx + 1}/${receipts.length})` : `${idx} de ${totalReceipts}`;
-      const source = receipt.inlineUrl || receipt.url || '';
-      const mime   = String(receipt.mime || '');
-      const fname  = receipt.name || '—';
+      const baseLabel = receipts.length > 1 ? `(${rIdx + 1}/${receipts.length})` : '';
+      const source    = receipt.inlineUrl || receipt.url || '';
+      const mime      = String(receipt.mime || '');
+      const fname     = receipt.name || '—';
+
+      // ── PDF convertido a imágenes (una página = una hoja) ──
+      if (receipt.pdfImages && receipt.pdfImages.length > 0) {
+        receipt.pdfImages.forEach((imgSrc, pageIdx) => {
+          const pageTag  = receipt.pdfImages.length > 1
+            ? ` · Pág. ${pageIdx + 1}/${receipt.pdfImages.length}` : '';
+          const fullLabel = `${idx} de ${totalReceipts}${baseLabel}${pageTag}`;
+          sections.push(`
+            <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
+                        font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
+              ${_header(fullLabel)}
+              <div style="flex:1;overflow:hidden;background:#fff;display:flex;
+                          align-items:center;justify-content:center">
+                <img src="${imgSrc}" alt="${_escapeHtml(fname)}"
+                     style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+              </div>
+            </div>`);
+        });
+        idx++;
+        return;
+      }
+
+      // ── Resto de casos ──
+      const label = `${idx} de ${totalReceipts}${baseLabel ? ' ' + baseLabel : ''}`;
       let body;
 
       if (receipt.loadError) {
@@ -2653,21 +2721,20 @@ function _buildPaymentAttachments(expenses) {
           </div>`;
       } else if (source && mime.startsWith('image/')) {
         body = `
-          <img src="${source}" alt="${_escapeHtml(fname)}"
-               style="width:100%;height:100%;object-fit:contain;display:block">`;
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;
+                      background:#fff;overflow:hidden">
+            <img src="${source}" alt="${_escapeHtml(fname)}"
+                 style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+          </div>`;
       } else if (mime.includes('pdf') || fname.toLowerCase().endsWith('.pdf')) {
         const driveUrl = receipt.url || source;
         body = `
           <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
-                      gap:12px;padding:40px;text-align:center;background:#f0f4ff">
+                      gap:12px;padding:40px;text-align:center;background:#f0f4ff;flex:1">
             <div style="font-size:56px">📑</div>
             <div style="font-size:16px;font-weight:800;color:#1e3a8a">${_escapeHtml(fname)}</div>
             <div style="font-size:12px;color:#6b7280">
-              Archivo PDF · ${_escapeHtml(exp.docType || '')} ${_escapeHtml(exp.docNumber || '')} · ${_escapeHtml(exp.provider || '')}
-            </div>
-            <div style="font-size:11px;color:#9ca3af;border:1px solid #d1d5db;border-radius:6px;
-                        padding:6px 14px;background:#fff">
-              Los archivos PDF se visualizan directamente en Google Drive
+              ${_escapeHtml(exp.docType || '')} ${_escapeHtml(exp.docNumber || '')} · ${_escapeHtml(exp.provider || '')}
             </div>
             ${driveUrl ? `<a href="${_escapeHtml(driveUrl)}" target="_blank"
               style="background:#1e3a8a;color:#fff;padding:10px 28px;border-radius:10px;
@@ -2676,18 +2743,18 @@ function _buildPaymentAttachments(expenses) {
           </div>`;
       } else if (source) {
         body = `
-          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:32px">
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:10px;padding:32px;flex:1">
             <div style="font-size:36px">📎</div>
             <div style="font-size:13px;font-weight:700">${_escapeHtml(fname)}</div>
             <a href="${_escapeHtml(source)}" target="_blank"
                style="background:#1e40af;color:#fff;padding:8px 20px;border-radius:8px;
-                      text-decoration:none;font-size:12px;font-weight:700">
-              Abrir archivo ↗</a>
+                      text-decoration:none;font-size:12px;font-weight:700">Abrir archivo ↗</a>
           </div>`;
       } else {
         body = `
-          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;
-                      padding:32px;color:#9ca3af">
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:8px;padding:32px;color:#9ca3af;flex:1">
             <div style="font-size:32px">🔗</div>
             <div style="font-size:12px">Adjunto sin URL disponible</div>
           </div>`;
@@ -2697,7 +2764,7 @@ function _buildPaymentAttachments(expenses) {
         <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
                     font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
           ${_header(label)}
-          <div style="flex:1;overflow:hidden;background:#fff">
+          <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;background:#fff">
             ${body}
           </div>
         </div>`);
