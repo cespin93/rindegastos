@@ -2,6 +2,7 @@
 const state = {
   role:           null,  // RENDIDOR | APROBADOR | GERENTE | ADMIN
   expenses:       [],
+  payments:       [],
   categories:     [],
   costCenters:    [],
   users:          [],
@@ -15,6 +16,33 @@ const state = {
 // ─── Helpers DOM ──────────────────────────────
 const $ = id => document.getElementById(id);
 const _isAdmin = () => state.role === 'ADMIN' || state.role === 'SUPERADMIN';
+const _getCurrentUserKey = () => ((getCurrentUser()?.email || '').toLowerCase().split('@')[0] || '');
+const _canChooseAnyExpenseCompany = () => _isAdmin() || _getCurrentUserKey() === 'mmoreno';
+const _isExpenseCompanyLocked = () => !_canChooseAnyExpenseCompany() && !!state.empresaUsuario;
+const _getManagerCompanyScope = () => {
+  if (state.role !== 'GERENTE') return '';
+  const userKey = _getCurrentUserKey();
+  if (userKey === 'mmoreno') return '';
+  if (userKey === 'jpalma') return 'C Y O';
+  return state.empresaUsuario || '';
+};
+const _canViewAllCompanies = () => {
+  if (_isAdmin()) return true;
+  return state.role === 'GERENTE' && !_getManagerCompanyScope();
+};
+const _canAccessExpense = exp => {
+  if (_isAdmin()) return true;
+  const user = getCurrentUser();
+  if (!user?.email) return false;
+  if (state.role === 'GERENTE') {
+    const empresaScope = _getManagerCompanyScope();
+    return !empresaScope || exp.empresa === empresaScope;
+  }
+  if (state.role === 'APROBADOR' && exp.approverEmail === user.email.toLowerCase()) {
+    return true;
+  }
+  return exp.email === user.email.toLowerCase();
+};
 const _getUserName = email => {
   const u = state.users.find(u => u.email === (email || '').toLowerCase());
   return u?.displayName || email || '—';
@@ -29,6 +57,31 @@ function toast(msg, type = 'success') {
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 3500);
+}
+
+function toastLink(msg, linkText, url, type = 'success') {
+  const colors = { success: '#16a34a', error: '#dc2626', info: '#2563eb' };
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;bottom:20px;right:20px;background:${colors[type]||colors.success};
+    color:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.25);
+    z-index:9999;font-size:14px;font-weight:500;max-width:380px;line-height:1.6;`;
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+    <div>${_escapeHtml(msg)}<br>
+      <a href="${_escapeHtml(url)}" target="_blank" rel="noopener"
+        style="color:#fff;text-decoration:underline;font-size:13px;font-weight:700"
+        onclick="this.closest('div[style]').remove()">${_escapeHtml(linkText)} ↗</a>
+    </div>
+    <button onclick="this.closest('div[style]').remove()"
+      style="background:rgba(255,255,255,.25);border:none;color:#fff;border-radius:6px;
+             padding:2px 8px;cursor:pointer;font-size:16px;flex-shrink:0;line-height:1.4">✕</button>
+  </div>`;
+  document.body.appendChild(el);
+  setTimeout(() => el?.isConnected && el.remove(), 20000);
+}
+
+function blockingAlert(msg) {
+  toast(msg, 'error');
+  window.alert(msg);
 }
 
 function loading(show) { $('loading').classList.toggle('hidden', !show); }
@@ -51,6 +104,96 @@ function _receiptIcon(mime) {
   return '📎';
 }
 
+function _escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function _formatFileSize(bytes) {
+  const size = Number(bytes || 0);
+  if (!size) return 'Tamano no disponible';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 102.4) / 10} KB`;
+  return `${Math.round(size / 104857.6) / 10} MB`;
+}
+
+function _shouldShowDocPreviewPanel() {
+  return window.innerWidth > 640;
+}
+
+let _activeReceiptObjectUrl = null;
+
+function _base64ToBlob(base64, mime) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime || 'application/octet-stream' });
+}
+
+function _renderPdfWithLoader(container, url, fallbackHref) {
+  if (!container) return;
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:relative;width:100%;height:100%';
+
+  const loader = document.createElement('div');
+  loader.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(15,23,42,.72);color:#fff;z-index:1';
+  loader.innerHTML = '<div class="spinner"></div><div style="font-size:13px;font-weight:600">Cargando PDF...</div>';
+
+  const iframe = document.createElement('iframe');
+  iframe.src = url;
+  iframe.allowFullscreen = true;
+  iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:6px;display:none';
+  iframe.onload = () => {
+    loader.remove();
+    iframe.style.display = 'block';
+  };
+  iframe.onerror = () => {
+    wrapper.innerHTML = fallbackHref
+      ? `<p style="color:#fff;padding:20px">No se pudo cargar el PDF. <a href="${fallbackHref}" target="_blank" style="color:#93c5fd">Abrir en una nueva pestaña</a></p>`
+      : '<p style="color:#fff;padding:20px">No se pudo cargar el PDF.</p>';
+  };
+
+  wrapper.append(loader, iframe);
+  container.innerHTML = '';
+  container.appendChild(wrapper);
+}
+
+function _renderPdfLoadingState(container) {
+  if (!container) return;
+  container.innerHTML = `
+    <div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(15,23,42,.72);color:#fff;border-radius:6px">
+      <div class="spinner"></div>
+      <div style="font-size:13px;font-weight:600">Cargando PDF...</div>
+    </div>`;
+}
+
+function _renderReceiptContent(container, r) {
+  if (!container) return;
+
+  const isImage    = r.mime?.startsWith('image/');
+  const isPdf      = (r.mime || '').includes('pdf');
+  const previewUrl = r.inlineUrl || `https://drive.google.com/file/d/${r.id}/preview`;
+  const imgUrl     = r.inlineUrl || `https://drive.google.com/uc?id=${r.id}&export=view`;
+
+  if (r.loading && isPdf) {
+    _renderPdfLoadingState(container);
+  } else if (isImage) {
+    container.innerHTML = `<img src="${imgUrl}" alt="${r.name}"
+        onerror="this.outerHTML='<p style=color:#fff;padding:20px>No se pudo cargar. <a href=\\'${r.url}\\' target=\\'_blank\\' style=color:#93c5fd>Abrir en Drive</a></p>'">`;
+  } else if (isPdf) {
+    _renderPdfWithLoader(container, previewUrl, r.url);
+  } else {
+    container.innerHTML = `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
+  }
+}
+
 function openFileViewer(r) {
   const overlay = $('file-viewer-overlay');
   const content = $('file-viewer-content');
@@ -60,33 +203,139 @@ function openFileViewer(r) {
 
   nameEl.textContent = r.name || 'Archivo';
   linkEl.href        = r.url  || '#';
-
-  const isImage    = r.mime?.startsWith('image/');
-  const previewUrl = `https://drive.google.com/file/d/${r.id}/preview`;
-  const imgUrl     = `https://drive.google.com/uc?id=${r.id}&export=view`;
-
-  content.innerHTML = isImage
-    ? `<img src="${imgUrl}" alt="${r.name}"
-        onerror="this.outerHTML='<p style=color:#fff;padding:20px>No se pudo cargar. <a href=\\'${r.url}\\' target=\\'_blank\\' style=color:#93c5fd>Abrir en Drive</a></p>'">`
-    : `<iframe src="${previewUrl}" allowfullscreen></iframe>`;
+  _renderReceiptContent(content, r);
 
   overlay.classList.remove('hidden');
   document.body.style.overflow = 'hidden';
 }
 
+function closeDetailReceiptPreview() {
+  const panel = $('detail-preview-panel');
+  const content = $('detail-preview-content');
+  const nameEl = $('detail-preview-name');
+  const linkEl = $('detail-preview-link');
+  if (panel) panel.classList.add('hidden');
+  if (content) {
+    content.innerHTML = '<span class="doc-preview-empty">📎 Selecciona un documento<br>para visualizarlo aquí</span>';
+  }
+  if (nameEl) nameEl.textContent = 'Selecciona un adjunto';
+  if (linkEl) {
+    linkEl.href = '#';
+    linkEl.classList.add('hidden');
+  }
+  document.querySelectorAll('#d-receipts .receipt-link').forEach(btn => btn.classList.remove('is-active'));
+}
+
+function _showDetailReceiptPreview(r) {
+  const panel = $('detail-preview-panel');
+  const content = $('detail-preview-content');
+  const nameEl = $('detail-preview-name');
+  const linkEl = $('detail-preview-link');
+  if (!panel || !content || !nameEl || !linkEl) return false;
+
+  $('file-viewer-overlay')?.classList.add('hidden');
+  if ($('file-viewer-content')) $('file-viewer-content').innerHTML = '';
+  document.body.style.overflow = '';
+
+  panel.classList.remove('hidden');
+  nameEl.textContent = r.name || 'Archivo';
+  linkEl.href = r.url || '#';
+  linkEl.classList.toggle('hidden', !r.url);
+  _renderReceiptContent(content, r);
+
+  document.querySelectorAll('#d-receipts .receipt-link').forEach(btn => {
+    btn.classList.toggle('is-active', btn.dataset.receiptId === String(r.id || ''));
+  });
+
+  return true;
+}
+
 function closeFileViewer() {
   $('file-viewer-overlay')?.classList.add('hidden');
   $('file-viewer-content').innerHTML = '';
+  if (_activeReceiptObjectUrl) {
+    URL.revokeObjectURL(_activeReceiptObjectUrl);
+    _activeReceiptObjectUrl = null;
+  }
   document.body.style.overflow = '';
 }
 
+async function openReceipt(r) {
+  if (!r) return;
+  const isPdf = (r.mime || '').includes('pdf');
+  const inlineDetailPreview = $('view-detail') && !$('view-detail').classList.contains('hidden') && $('detail-preview-panel');
+  try {
+    if (isPdf) {
+      const loadingPayload = {
+        ...r,
+        loading: true
+      };
+      if (!_showDetailReceiptPreview(loadingPayload) || !inlineDetailPreview) {
+        openFileViewer(loadingPayload);
+      }
+    }
+    if (r.id) {
+      const res = await getReceiptContent(r.id);
+      const blob = _base64ToBlob(res.data, res.mime || r.mime);
+      if (_activeReceiptObjectUrl) URL.revokeObjectURL(_activeReceiptObjectUrl);
+      _activeReceiptObjectUrl = URL.createObjectURL(blob);
+      const previewPayload = {
+        ...r,
+        name: res.name || r.name,
+        mime: res.mime || r.mime,
+        inlineUrl: _activeReceiptObjectUrl
+      };
+      if (!_showDetailReceiptPreview(previewPayload) || !inlineDetailPreview) {
+        openFileViewer(previewPayload);
+      }
+      return;
+    }
+  } catch (e) {
+    console.warn('[Rindegastos] no se pudo cargar el adjunto inline:', e.message);
+    toast('No se pudo mostrar el adjunto dentro de la app: ' + e.message, 'error');
+    return;
+  }
+  toast('El adjunto no tiene un identificador válido para mostrarse.', 'error');
+}
+
 const fmt     = n => '$' + Number(n).toLocaleString('es-CL');
+const _moneyDigits = value => String(value ?? '').replace(/\D+/g, '');
+const parseMoney = value => {
+  const digits = _moneyDigits(value);
+  return digits ? Number(digits) : 0;
+};
+const formatMoneyInputValue = value => {
+  const digits = _moneyDigits(value);
+  return digits ? fmt(Number(digits)) : '';
+};
+function setMoneyInputValue(input, value) {
+  if (!input) return;
+  input.value = formatMoneyInputValue(value);
+}
+function bindMoneyInput(input) {
+  if (!input || input.dataset.moneyBound === '1') return;
+  input.dataset.moneyBound = '1';
+  const syncValue = () => {
+    input.value = formatMoneyInputValue(input.value);
+  };
+  input.addEventListener('input', syncValue);
+  input.addEventListener('blur', syncValue);
+  syncValue();
+}
+function bindMoneyInputs(root = document) {
+  root.querySelectorAll('input[data-money-input="true"]').forEach(bindMoneyInput);
+}
 const fmtDate = s => {
   if (!s) return '—';
   const d = s.includes('T') ? s.split('T')[0] : s;
   const parsed = new Date(d + 'T12:00:00');
   return isNaN(parsed) ? s : parsed.toLocaleDateString('es-CL');
 };
+
+function _getBackendDeploymentId() {
+  const match = String(CONFIG?.APPS_SCRIPT_URL || '').match(/\/s\/([^/]+)\/exec/i);
+  return match ? match[1] : 'desconocido';
+}
 
 function badge(status) {
   const cls = {
@@ -98,9 +347,52 @@ function badge(status) {
   return `<span class="badge ${cls[status] || 'badge-gray'}">${status}</span>`;
 }
 
+function _getPaymentStatus(exp) {
+  if (exp.paymentStatus) return exp.paymentStatus;
+  return exp.status === 'AUTORIZADO' ? 'PENDIENTE_PAGO' : '';
+}
+
+function _getPaymentStatusLabel(status) {
+  const labels = {
+    PENDIENTE_PAGO: 'Pendiente de pago',
+    EN_PREPARACION_PAGO: 'En preparacion',
+    PAGADO: 'Pagado',
+    ANULADO_PAGO: 'Anulado'
+  };
+  return labels[status] || 'Pendiente de pago';
+}
+
+function _paymentBadge(status, batchId) {
+  const normalized = status || 'PENDIENTE_PAGO';
+  const cls = {
+    PENDIENTE_PAGO: 'pending',
+    EN_PREPARACION_PAGO: 'preparing',
+    PAGADO: 'paid',
+    ANULADO_PAGO: 'cancelled'
+  }[normalized] || 'pending';
+  const meta = batchId ? `<span class="conta-pay-meta">Lote ${_escapeHtml(batchId)}</span>` : '';
+  return `<span class="conta-pay-badge ${cls}">${_getPaymentStatusLabel(normalized)}</span>${meta}`;
+}
+
+function _canSelectPaymentStatus(status) {
+  return status === 'PENDIENTE_PAGO' || status === 'ANULADO_PAGO';
+}
+
+function _buildPaymentBatchId() {
+  const stamp = new Date();
+  const yyyy = stamp.getFullYear();
+  const mm = String(stamp.getMonth() + 1).padStart(2, '0');
+  const dd = String(stamp.getDate()).padStart(2, '0');
+  const hh = String(stamp.getHours()).padStart(2, '0');
+  const min = String(stamp.getMinutes()).padStart(2, '0');
+  const sec = String(stamp.getSeconds()).padStart(2, '0');
+  return `PG-${yyyy}${mm}${dd}-${hh}${min}${sec}`;
+}
+
 // ─── Arranque ─────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   await _loadViews();
+  bindMoneyInputs();
   initAuth(onSignIn);
 });
 
@@ -131,8 +423,9 @@ async function _loadViews() {
   const main = document.getElementById('main-content');
   const views = ['dashboard', 'new-expense', 'detail', 'approvals', 'gerencia', 'contabilidad', 'admin', 'batch-detail'];
   const baseUrl = new URL('.', window.location.href);
+  const viewVersion = '12';
   for (const name of views) {
-    const res  = await fetch(new URL(`views/${name}.html`, baseUrl), { cache: 'no-store' });
+    const res  = await fetch(new URL(`views/${name}.html?v=${viewVersion}`, baseUrl), { cache: 'no-store' });
     const html = await res.text();
     main.insertAdjacentHTML('beforeend', html);
   }
@@ -165,7 +458,7 @@ async function onSignIn(user) {
     $('login-screen').classList.add('hidden');
     $('app-screen').classList.remove('hidden');
 
-    if (state.role === 'APROBADOR') {
+    if (state.role === 'APROBADOR' || state.role === 'SUPERADMIN') {
       await navApprovals();
     } else if (state.role === 'GERENTE') {
       await navGerencia();
@@ -185,9 +478,48 @@ async function _loadCategories() {
   _fillSelect('form-category', state.categories.map(c => ({ val: c, label: c })), '— Categoría —');
 }
 
-async function _loadCostCenters() {
-  state.costCenters = await getCostCenters(state.empresaUsuario);
+function _fillExpenseCompanySelects(selectedCompany = '') {
+  const items = state.empresas.map(e => ({ val: e.nombre, label: e.nombre }));
+  if (selectedCompany && !items.some(i => i.val === selectedCompany)) {
+    items.unshift({ val: selectedCompany, label: selectedCompany });
+  }
+  const locked = _isExpenseCompanyLocked();
+  ['form-company', 'bulk-company'].forEach(id => {
+    _fillSelect(id, items, '— Seleccionar empresa —');
+    const sel = $(id);
+    if (!sel) return;
+    sel.value = selectedCompany || '';
+    sel.disabled = locked;
+  });
+}
+
+function _syncExpenseCompanySelects(company = '') {
+  ['form-company', 'bulk-company'].forEach(id => {
+    const sel = $(id);
+    if (sel) sel.value = company || '';
+  });
+}
+
+function _refreshBulkCostCenterOptions() {
+  const options = ['<option value="">— C. Costo —</option>']
+    .concat(state.costCenters.map(c => `<option value="${c}">${c}</option>`))
+    .join('');
+  document.querySelectorAll('#bulk-tbody .bulk-cost-center-select').forEach(sel => {
+    const prev = sel.value;
+    sel.innerHTML = options;
+    if (prev && state.costCenters.includes(prev)) sel.value = prev;
+  });
+}
+
+async function _loadCostCenters(company = state.empresaUsuario) {
+  state.costCenters = company ? await getCostCenters(company) : [];
+  const formCostCenter = $('form-cost-center');
+  const prevFormValue = formCostCenter?.value || '';
   _fillSelect('form-cost-center', state.costCenters.map(c => ({ val: c, label: c })), '— Centro de Costo —');
+  if (formCostCenter && prevFormValue && state.costCenters.includes(prevFormValue)) {
+    formCostCenter.value = prevFormValue;
+  }
+  _refreshBulkCostCenterOptions();
 }
 
 async function _loadEmpresas() {
@@ -218,6 +550,23 @@ function _fillSelect(id, items, placeholder) {
     items.map(i => `<option value="${i.val}">${i.label}</option>`).join('');
 }
 
+function _getSelectedExpenseCompany() {
+  return $('form-company')?.value || $('bulk-company')?.value || state.empresaUsuario || '';
+}
+
+async function handleExpenseCompanyChange(company) {
+  _syncExpenseCompanySelects(company || '');
+  await _loadCostCenters(company || '');
+}
+
+async function _setupExpenseCompanyFields() {
+  const selectedCompany = _isExpenseCompanyLocked()
+    ? (state.empresaUsuario || '')
+    : (_getSelectedExpenseCompany() || state.empresaUsuario || '');
+  _fillExpenseCompanySelects(selectedCompany);
+  await _loadCostCenters(selectedCompany);
+}
+
 function _mergeExpenses(list) {
   list.forEach(e => {
     const idx = state.expenses.findIndex(x => x.rowIndex === e.rowIndex);
@@ -232,9 +581,7 @@ async function navDashboard() {
     showView('view-dashboard');
     const [all] = await Promise.all([getExpenses(), _loadFondoFijo()]);
     _mergeExpenses(all);
-    const mine = (_isAdmin() || state.role === 'GERENTE')
-      ? all
-      : all.filter(e => e.email === getCurrentUser().email.toLowerCase());
+    const mine = all.filter(_canAccessExpense);
     _renderStats(mine);
     _renderFondoFijo(mine);
     _renderTable(mine);
@@ -383,7 +730,7 @@ function _renderTable(exps) {
 }
 
 function openBatchDetail(batchName, context = 'dashboard') {
-  const list = state.expenses.filter(e => e.batchName === batchName);
+  const list = state.expenses.filter(e => e.batchName === batchName && _canAccessExpense(e));
   if (!list.length) return;
 
   state._currentBatch   = batchName;
@@ -447,7 +794,7 @@ function openBatchDetail(batchName, context = 'dashboard') {
 
 async function authorizeAll() {
   const batchName = state._currentBatch;
-  const list      = state.expenses.filter(e => e.batchName === batchName && e.status === 'APROBADO');
+  const list      = state.expenses.filter(e => e.batchName === batchName && e.status === 'APROBADO' && _canAccessExpense(e));
   if (!list.length) { toast('No hay gastos aprobados para autorizar', 'info'); return; }
 
   if (!confirm(`¿Autorizar los ${list.length} gasto(s) aprobados del conjunto "${batchName}"?`)) return;
@@ -482,7 +829,7 @@ async function authorizeAll() {
 
 function printAuthReport(batchName, authEmail, snapshot) {
   const batchName_ = batchName || state._currentBatch;
-  const list       = state.expenses.filter(e => e.batchName === batchName_);
+  const list       = state.expenses.filter(e => e.batchName === batchName_ && _canAccessExpense(e));
   const total      = list.reduce((s, e) => s + e.total, 0);
   const authName   = _getUserName(authEmail) || authEmail || _getUserName(getCurrentUser()?.email);
   const fecha      = new Date().toLocaleDateString('es-CL');
@@ -563,10 +910,7 @@ function printAuthReport(batchName, authEmail, snapshot) {
 function filterTable() {
   const q = $('search').value.toLowerCase();
   const s = $('filter-status').value;
-  const user = getCurrentUser();
-  let exps = (_isAdmin() || state.role === 'GERENTE')
-    ? state.expenses
-    : state.expenses.filter(e => e.email === user.email.toLowerCase());
+  let exps = state.expenses.filter(_canAccessExpense);
   exps = exps.filter(e =>
     (!q || e.title.toLowerCase().includes(q) || e.category.toLowerCase().includes(q) || (e.provider || '').toLowerCase().includes(q)) &&
     (!s || e.status === s)
@@ -576,10 +920,7 @@ function filterTable() {
 }
 
 function exportCSV() {
-  const user = getCurrentUser();
-  const exps = (_isAdmin() || state.role === 'GERENTE')
-    ? state.expenses
-    : state.expenses.filter(e => e.email === user.email.toLowerCase());
+  const exps = state.expenses.filter(_canAccessExpense);
   const headers = ['Fecha','Concepto','Categoría','Tipo Doc','N° Doc','Proveedor','Monto','Estado','Aprobador','Observaciones'];
   const rows = exps.map(e => [
     e.fechaGasto, e.title, e.category, e.docType, e.docNumber,
@@ -597,6 +938,11 @@ function exportCSV() {
 function openDetail(rowIndex, context) {
   const e = state.expenses.find(x => x.rowIndex === rowIndex);
   if (!e) return;
+  closeFileViewer();
+  if (!_canAccessExpense(e)) {
+    toast('No tienes permisos para visualizar este gasto', 'error');
+    return;
+  }
   state.currentExpense = e;
   state.detailContext  = context || 'dashboard';
 
@@ -615,7 +961,7 @@ function openDetail(rowIndex, context) {
 
   $('d-receipts').innerHTML = e.receipts?.length
     ? e.receipts.map(r => `
-        <button class="receipt-link" onclick='openFileViewer(${JSON.stringify(r)})'>
+        <button class="receipt-link" data-receipt-id="${String(r.id || '')}" onclick='openReceipt(${JSON.stringify(r)})'>
           ${_receiptIcon(r.mime)} ${r.name}
         </button>`).join('')
     : '<p class="text-muted">Sin archivos adjuntos</p>';
@@ -634,6 +980,7 @@ function openDetail(rowIndex, context) {
     context === 'gerencia' &&
     e.status === 'APROBADO' &&
     (state.role === 'GERENTE' || _isAdmin()) &&
+    _canAccessExpense(e) &&
     (e.email !== user.email.toLowerCase() || state.role === 'SUPERADMIN');
 
   $('d-actions-l1').classList.toggle('hidden', !canL1);
@@ -642,6 +989,10 @@ function openDetail(rowIndex, context) {
   if (canL2) $('d-comment-l2').value = '';
 
   showView('view-detail');
+  closeDetailReceiptPreview();
+  if (context === 'approvals' && e.receipts?.length) {
+    openReceipt(e.receipts[0]);
+  }
 }
 
 async function doDecision(newStatus) {
@@ -728,8 +1079,8 @@ async function navApprovals() {
       // Admin ve todos los PENDIENTE
       pending = all.filter(e => e.status === 'PENDIENTE');
     } else if (state.role === 'GERENTE') {
-      // Gerente ve todos los PENDIENTE (solo lectura)
-      pending = all.filter(e => e.status === 'PENDIENTE');
+      // Gerente ve los PENDIENTE dentro de su alcance (solo lectura)
+      pending = all.filter(e => e.status === 'PENDIENTE' && _canAccessExpense(e));
     } else {
       // Aprobador ve solo los asignados a él
       pending = all.filter(e =>
@@ -786,7 +1137,7 @@ async function navGerencia() {
     const all = await getExpenses();
     _mergeExpenses(all);
     // Solo rendiciones con APROBADO (esperando autorización gerencial)
-    const toAuthorize = all.filter(e => e.status === 'APROBADO');
+    const toAuthorize = all.filter(e => e.status === 'APROBADO' && _canAccessExpense(e));
     _renderGerencia(toAuthorize);
     const countText = toAuthorize.length
       ? `${toAuthorize.length} pendiente${toAuthorize.length > 1 ? 's' : ''} de autorización`
@@ -875,30 +1226,85 @@ async function navNewExpense() {
   window._receipts      = [];
   window._originalFiles = [];
   window._docPreviewIndex = 0;
-  const panel = $('doc-preview-panel');
-  if (panel) panel.classList.add('hidden');
+  _setDocPreviewEmptyState();
   const autofillBtn = $('autofill-btn-wrap');
   if (autofillBtn) autofillBtn.style.display = 'none';
   const batchNameInput = $('bulk-batch-name');
   if (batchNameInput) batchNameInput.value = '';
   _resetBulk();
   setExpenseMode('single');
-  await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers()]);
+  await Promise.all([_loadCategories(), _loadUsers(), _loadEmpresas()]);
+  await _setupExpenseCompanyFields();
   showView('view-new-expense');
 }
 
 // ── Modo Individual ──
 window._receipts      = [];
 window._originalFiles = []; // archivos originales para OCR
+window._docPreviewObjectUrl = null;
+
+function _clearDocPreviewObjectUrl() {
+  if (window._docPreviewObjectUrl) {
+    URL.revokeObjectURL(window._docPreviewObjectUrl);
+    window._docPreviewObjectUrl = null;
+  }
+}
+
+function _setDocPreviewEmptyState() {
+  const panel = $('doc-preview-panel');
+  const content = $('doc-preview-content');
+  const nameEl = $('doc-preview-name');
+  const metaEl = $('doc-preview-meta');
+  const openEl = $('doc-preview-open');
+  const stripEl = $('doc-preview-strip');
+  if (panel) panel.classList.add('hidden');
+  if (content) {
+    content.innerHTML = '<span class="doc-preview-empty"><strong>Adjunta un documento</strong>Se mostrara aqui una vista previa mas clara del respaldo antes de registrar la rendicion.</span>';
+  }
+  if (nameEl) nameEl.textContent = 'Adjunta un documento';
+  if (metaEl) metaEl.textContent = 'Podras revisarlo aqui antes de registrar la rendicion.';
+  if (openEl) {
+    openEl.href = '#';
+    openEl.classList.add('hidden');
+  }
+  if (stripEl) {
+    stripEl.classList.add('hidden');
+    stripEl.innerHTML = '';
+  }
+  _clearDocPreviewObjectUrl();
+}
+
+function selectDocPreview(index) {
+  window._docPreviewIndex = index;
+  _updateDocPreview();
+}
+
+function _renderDocPreviewStrip(files) {
+  const stripEl = $('doc-preview-strip');
+  if (!stripEl) return;
+  if (!files.length) {
+    stripEl.classList.add('hidden');
+    stripEl.innerHTML = '';
+    return;
+  }
+  stripEl.classList.remove('hidden');
+  stripEl.innerHTML = files.map((file, index) => {
+    const activeClass = index === window._docPreviewIndex ? ' is-active' : '';
+    const typeLabel = (file.type || '').includes('pdf') ? 'PDF' : (file.type || '').startsWith('image/') ? 'Imagen' : 'Archivo';
+    return `
+      <button type="button" class="doc-preview-thumb${activeClass}" onclick="selectDocPreview(${index})">
+        <span class="doc-preview-thumb-icon">${_receiptIcon(file.type || '')}</span>
+        <span class="doc-preview-thumb-text">
+          <span class="doc-preview-thumb-name">${_escapeHtml(file.name || `Adjunto ${index + 1}`)}</span>
+          <span class="doc-preview-thumb-meta">${typeLabel} • ${_formatFileSize(file.size)}</span>
+        </span>
+      </button>`;
+  }).join('');
+}
 
 async function handleFiles(input) {
   const preview = $('file-preview');
   const newFiles = Array.from(input.files);
-
-  // Mostrar preview inmediato del primer archivo (antes de subir)
-  if (newFiles.length > 0 && window._originalFiles.length === 0) {
-    _showDocPreviewFile(newFiles[0]);
-  }
 
   for (const file of newFiles) {
     const item = document.createElement('div');
@@ -914,6 +1320,7 @@ async function handleFiles(input) {
     } catch (e) {
       item.className = 'file-item file-error';
       item.innerHTML = `❌ ${file.name}: ${e.message}`;
+      blockingAlert(`No se pudo subir el archivo "${file.name}": ${e.message}`);
     }
   }
   _updateDocPreview();
@@ -926,15 +1333,35 @@ window._docPreviewIndex = 0;
 function _showDocPreviewFile(file) {
   const panel = $('doc-preview-panel');
   const content = $('doc-preview-content');
-  if (!panel || !content) return;
+  const nameEl = $('doc-preview-name');
+  const metaEl = $('doc-preview-meta');
+  const openEl = $('doc-preview-open');
+  if (!panel || !content || !file) return;
+  if (!_shouldShowDocPreviewPanel()) {
+    panel.classList.add('hidden');
+    _clearDocPreviewObjectUrl();
+    return;
+  }
   panel.classList.remove('hidden');
+  _clearDocPreviewObjectUrl();
   const url = URL.createObjectURL(file);
+  window._docPreviewObjectUrl = url;
+  if (nameEl) nameEl.textContent = file.name || 'Documento adjunto';
+  if (metaEl) {
+    const typeLabel = (file.type || '').includes('pdf') ? 'PDF' : (file.type || '').startsWith('image/') ? 'Imagen' : (file.type || 'Archivo');
+    metaEl.textContent = `${typeLabel} • ${_formatFileSize(file.size)} • ${window._docPreviewIndex + 1} de ${window._originalFiles.length}`;
+  }
+  if (openEl) {
+    openEl.href = url;
+    openEl.classList.remove('hidden');
+  }
   if (file.type.startsWith('image/')) {
-    content.innerHTML = `<img src="${url}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:6px">`;
+    content.innerHTML = `<div class="doc-preview-stage"><img src="${url}" alt="${_escapeHtml(file.name || 'Documento')}" loading="lazy"></div>`;
   } else if (file.type === 'application/pdf') {
-    content.innerHTML = `<iframe src="${url}" style="width:100%;height:100%;border:none;border-radius:6px"></iframe>`;
+    content.innerHTML = '<div class="doc-preview-stage"></div>';
+    _renderPdfWithLoader(content.firstElementChild, url);
   } else {
-    content.innerHTML = `<div style="text-align:center;padding:20px"><div style="font-size:48px;margin-bottom:8px">📎</div><div style="font-size:13px;color:#6b7280">${file.name}</div></div>`;
+    content.innerHTML = `<div class="doc-preview-stage"><div style="text-align:center;padding:20px"><div style="font-size:54px;margin-bottom:10px">${_receiptIcon(file.type || '')}</div><div style="font-size:15px;font-weight:700;color:#0f172a;margin-bottom:6px">${_escapeHtml(file.name || 'Documento adjunto')}</div><div style="font-size:12px;color:#64748b">No hay vista previa inline para este formato, pero puedes abrirlo completo.</div></div></div>`;
   }
 }
 
@@ -943,9 +1370,13 @@ function _updateDocPreview() {
   const nav = $('doc-preview-nav');
   const content = $('doc-preview-content');
   if (!panel || !content) return;
+  if (!_shouldShowDocPreviewPanel()) {
+    _setDocPreviewEmptyState();
+    return;
+  }
   const files = window._originalFiles;
   if (!files.length) {
-    panel.classList.add('hidden');
+    _setDocPreviewEmptyState();
     return;
   }
   if (window._docPreviewIndex >= files.length) window._docPreviewIndex = files.length - 1;
@@ -953,10 +1384,11 @@ function _updateDocPreview() {
     nav.innerHTML = files.length > 1 ? `
       <button onclick="_docPreviewGo(-1)" ${window._docPreviewIndex === 0 ? 'disabled' : ''}
               class="doc-nav-btn">‹</button>
-      <span style="font-size:12px;color:#6b7280">${window._docPreviewIndex + 1} / ${files.length}</span>
+      <span class="doc-preview-counter">${window._docPreviewIndex + 1} / ${files.length}</span>
       <button onclick="_docPreviewGo(1)" ${window._docPreviewIndex === files.length - 1 ? 'disabled' : ''}
               class="doc-nav-btn">›</button>` : '';
   }
+  _renderDocPreviewStrip(files);
   _showDocPreviewFile(files[window._docPreviewIndex]);
 }
 
@@ -984,7 +1416,7 @@ async function autoFillBulkRow(rowId) {
     // selects order: categoría(0), tipo doc(1)
 
     if (data.date)     inputs[1].value  = data.date;
-    if (data.total)    inputs[2].value  = Math.round(Number(data.total));
+    if (data.total)    setMoneyInputValue(inputs[2], Math.round(Number(data.total)));
     if (data.docNumber) inputs[3].value = data.docNumber;
     if (data.provider)  inputs[4].value = data.provider;
 
@@ -1020,7 +1452,7 @@ async function autoFillFromReceipt() {
     }
     if (data.docNumber) $('f-docnum').value   = data.docNumber;
     if (data.provider)  $('f-provider').value = data.provider;
-    if (data.total)     $('f-total').value    = Math.round(Number(data.total));
+    if (data.total)     setMoneyInputValue($('f-total'), Math.round(Number(data.total)));
     if (data.date)      $('f-date').value     = data.date;
 
     toast('Datos extraídos correctamente — revisa y ajusta si es necesario', 'success');
@@ -1058,18 +1490,18 @@ function _checkFondoFijo(montoNuevo, extraGastado = 0) {
 
 function _checkDuplicateFolio(provider, docNumber, excludeExpenses = []) {
   if (!provider || !docNumber) return null;
-  const prov = provider.trim().toLowerCase();
-  const num  = docNumber.trim().toLowerCase();
+  const prov = String(provider).trim().toLowerCase();
+  const num  = String(docNumber).trim().toLowerCase();
   const existing = (state.expenses || []).find(e =>
     e.status !== 'RECHAZADO' &&
-    e.provider.trim().toLowerCase() === prov &&
-    e.docNumber.trim().toLowerCase() === num
+    String(e.provider || '').trim().toLowerCase() === prov &&
+    String(e.docNumber || '').trim().toLowerCase() === num
   );
   if (existing) return existing;
   // Check within the provided list (for batch mode)
   const inBatch = excludeExpenses.find(e =>
-    (e.provider || '').trim().toLowerCase() === prov &&
-    (e.docNumber || '').trim().toLowerCase() === num
+    String(e.provider || '').trim().toLowerCase() === prov &&
+    String(e.docNumber || '').trim().toLowerCase() === num
   );
   return inBatch || null;
 }
@@ -1077,11 +1509,21 @@ function _checkDuplicateFolio(provider, docNumber, excludeExpenses = []) {
 async function submitExpense(ev) {
   ev.preventDefault();
   const f = ev.target;
+  const empresa = (f.empresa.value || '').trim();
+  if (!empresa) {
+    toast('Selecciona una empresa', 'error');
+    return;
+  }
+  const total = parseMoney(f.total.value);
+  if (total <= 0) {
+    toast('Ingresa un monto valido mayor a cero', 'error');
+    return;
+  }
   const exp = {
     fechaGasto:    f.fechaGasto.value,
     title:         f.title.value.trim(),
     category:      f.category.value,
-    total:         parseFloat(f.total.value),
+    total,
     docType:       f.docType.value,
     docNumber:     f.docNumber.value.trim(),
     provider:      f.provider.value.trim(),
@@ -1090,9 +1532,13 @@ async function submitExpense(ev) {
     costCenter:    f.costCenter.value,
     receipts:      window._receipts || []
   };
+  if (!exp.receipts.length) {
+    blockingAlert('No se puede subir una rendición sin un archivo adjunto. Debes subir al menos un respaldo del gasto.');
+    return;
+  }
   const dup = _checkDuplicateFolio(exp.provider, exp.docNumber);
   if (dup) {
-    toast(`Folio "${exp.docNumber}" ya existe para el proveedor "${exp.provider}"`, 'error');
+    blockingAlert(`Folio "${exp.docNumber}" ya existe para el proveedor "${exp.provider}".`);
     return;
   }
   const ffCheck = _checkFondoFijo(exp.total);
@@ -1103,13 +1549,13 @@ async function submitExpense(ev) {
   }
   loading(true);
   try {
-    await addExpense(exp, getCurrentUser().email, state.empresaUsuario);
+    await addExpense(exp, getCurrentUser().email, empresa);
     await addAudit('CREAR', getCurrentUser().email, { title: exp.title, total: exp.total });
     toast('Rendición registrada exitosamente', 'success');
     window._receipts = [];
     await navDashboard();
   } catch (e) {
-    toast(e.message, 'error');
+    blockingAlert(e.message || 'No se pudo registrar la rendición.');
   } finally {
     loading(false);
   }
@@ -1166,7 +1612,7 @@ function addBulkRow() {
       <input type="date" class="input-field-sm" required>
     </td>
     <td class="bulk-td">
-      <input type="number" class="input-field-sm" placeholder="0" min="1" step="1" required style="width:100px">
+      <input type="text" class="input-field-sm" placeholder="$0" required style="width:100px" inputmode="numeric" data-money-input="true" autocomplete="off">
     </td>
     <td class="bulk-td">
       <select class="input-field-sm" required>
@@ -1175,7 +1621,7 @@ function addBulkRow() {
       </select>
     </td>
     <td class="bulk-td">
-      <select class="input-field-sm">
+      <select class="input-field-sm bulk-cost-center-select">
         <option value="">— C. Costo —</option>
         ${_ccOptions()}
       </select>
@@ -1212,6 +1658,7 @@ function addBulkRow() {
       <button type="button" class="btn-danger-sm" onclick="removeBulkRow(${id})" title="Eliminar fila">✕</button>
     </td>`;
   $('bulk-tbody').appendChild(row);
+  bindMoneyInputs(row);
 }
 
 function removeBulkRow(id) {
@@ -1243,8 +1690,9 @@ async function handleBulkFiles(input, rowId) {
       const btn = $(`bulk-autofill-${rowId}`);
       if (btn) btn.style.display = 'block';
     } catch (e) {
-      statusEl.textContent = `❌ Error`;
+      statusEl.textContent = `❌ ${e.message}`;
       statusEl.style.color = '#dc2626';
+      blockingAlert(`No se pudo subir el archivo "${file.name}" en la fila ${rowId + 1}: ${e.message}`);
     }
   }
   window._bulkUploading.delete(rowId);
@@ -1257,6 +1705,8 @@ async function submitBulk() {
   }
   const batchName = $('bulk-batch-name').value.trim();
   if (!batchName) { toast('Ingresa un nombre para el conjunto', 'error'); return; }
+  const empresa = ($('bulk-company')?.value || '').trim();
+  if (!empresa) { toast('Selecciona una empresa para el conjunto', 'error'); return; }
 
   const rows = Array.from($('bulk-tbody').querySelectorAll('tr.bulk-row'));
   if (!rows.length) { toast('Agrega al menos una fila', 'error'); return; }
@@ -1276,12 +1726,21 @@ async function submitBulk() {
       toast('Completa todos los campos obligatorios en cada fila', 'error');
       return;
     }
+    const parsedTotal = parseMoney(total);
+    if (parsedTotal <= 0) {
+      toast('Ingresa un monto valido mayor a cero en cada fila', 'error');
+      return;
+    }
     expenses.push({
-      title, fechaGasto, total: parseFloat(total),
+      title, fechaGasto, total: parsedTotal,
       category, costCenter, docType, docNumber, provider,
       notes: notes || '', approverEmail, batchName,
       receipts: window._bulkReceipts.get(id) || []
     });
+    if (!expenses[expenses.length - 1].receipts.length) {
+      blockingAlert(`No se puede subir una rendición sin un archivo adjunto. La fila ${id + 1} no tiene respaldo cargado.`);
+      return;
+    }
   }
 
   // Validate folio duplicates (system-wide + within batch)
@@ -1289,7 +1748,7 @@ async function submitBulk() {
   for (const exp of expenses) {
     const dup = _checkDuplicateFolio(exp.provider, exp.docNumber, seen);
     if (dup) {
-      toast(`Folio "${exp.docNumber}" duplicado para el proveedor "${exp.provider}"`, 'error');
+      blockingAlert(`Folio "${exp.docNumber}" duplicado para el proveedor "${exp.provider}".`);
       return;
     }
     if (exp.provider && exp.docNumber) seen.push(exp);
@@ -1307,7 +1766,7 @@ async function submitBulk() {
   loading(true);
   try {
     for (const exp of expenses) {
-      await addExpense(exp, userEmail, state.empresaUsuario);
+      await addExpense(exp, userEmail, empresa);
     }
     await addAudit('CREAR_CONJUNTO', userEmail, { batchName, count: expenses.length });
     toast(`Conjunto "${batchName}" registrado con ${expenses.length} rendiciones`, 'success');
@@ -1335,8 +1794,8 @@ async function navReportes() {
     const all = await getExpenses();
     _mergeExpenses(all);
 
-    // Filtro empresa: GERENTE solo ve la suya
-    const esGerente = state.role === 'GERENTE';
+    // Filtro empresa: GERENTE solo ve su alcance permitido
+    const esGerente = state.role === 'GERENTE' && !_canViewAllCompanies();
     const empWrap   = $('rep-empresa-wrap');
     if (empWrap) empWrap.classList.toggle('hidden', esGerente);
 
@@ -1365,8 +1824,8 @@ async function navReportes() {
 }
 
 function renderReportes() {
-  const empresa = state.role === 'GERENTE'
-    ? state.empresaUsuario
+  const empresa = (state.role === 'GERENTE' && !_canViewAllCompanies())
+    ? _getManagerCompanyScope()
     : ($('rep-empresa')?.value || '');
   const desde  = $('rep-desde')?.value  || '';
   const hasta  = $('rep-hasta')?.value  || '';
@@ -1415,7 +1874,7 @@ function renderReportes() {
   _drawChart('chart-mensual', 'line', mesLabels, mesLabels.map(k => byMes[k]), [palette[0]]);
 
   // ── Gráfica: por empresa (solo admin) ──
-  if (state.role !== 'GERENTE') {
+  if (state.role !== 'GERENTE' || _canViewAllCompanies()) {
     const byEmp = {};
     exps.forEach(e => { const k = e.empresa || 'Sin empresa'; byEmp[k] = (byEmp[k] || 0) + e.total; });
     _drawChart('chart-empresas', 'bar', Object.keys(byEmp), Object.values(byEmp), palette);
@@ -1439,7 +1898,6 @@ function _drawChart(id, type, labels, data, palette, horizontal = false) {
         borderColor:     type === 'line' ? palette[0] : colors,
         borderWidth:     type === 'line' ? 2 : 0,
         fill:            type === 'line',
-        tension:         0.4,
         pointRadius:     type === 'line' ? 4 : 0
       }]
     },
@@ -1848,11 +2306,12 @@ async function _loadAdminFondoFijo() {
         </td>
         <td class="td td-muted">${u.role}</td>
         <td class="td">
-          <input id="ff-input-${u.email.replace(/[@.]/g,'_')}"
-                 type="number" min="0" step="1000"
-                 value="${monto}"
+             <input id="ff-input-${u.email.replace(/[@.]/g,'_')}"
+               type="text"
+               value="${formatMoneyInputValue(monto)}"
                  placeholder="Sin fondo"
-                 class="input-field" style="width:160px;margin:0">
+               class="input-field" style="width:160px;margin:0"
+               inputmode="numeric" data-money-input="true" autocomplete="off">
         </td>
         <td class="td">
           <button onclick="saveFondoFijo('${u.email}')"
@@ -1862,6 +2321,7 @@ async function _loadAdminFondoFijo() {
         </td>
       </tr>`;
   }).join('');
+  bindMoneyInputs(tbody);
 }
 
 async function saveFondoFijo(email) {
@@ -1869,7 +2329,7 @@ async function saveFondoFijo(email) {
   if (!month) { toast('Selecciona un mes', 'error'); return; }
   const inputId = 'ff-input-' + email.replace(/[@.]/g, '_');
   const val     = $(inputId)?.value.trim();
-  const monto   = parseFloat(val);
+  const monto   = parseMoney(val);
   loading(true);
   try {
     if (!val || monto <= 0) {
@@ -1892,16 +2352,20 @@ async function saveFondoFijo(email) {
 // ─── CONTABILIDAD ─────────────────────────────
 // Cache de los documentos autorizados filtrados actualmente visibles
 let _contaData = [];
+let _contaFiltered = [];
+const _contaSelection = new Set();
 
 async function navContabilidad() {
   loading(true);
   try {
     showView('view-contabilidad');
-    const all = await getExpenses();
+    const [all, payments] = await Promise.all([getExpenses(), getPayments()]);
     _mergeExpenses(all);
+    state.payments = payments;
 
     // Solo rendiciones AUTORIZADAS
     _contaData = all.filter(e => e.status === 'AUTORIZADO');
+    _contaSelection.clear();
 
     // Poblar filtro de categorías
     const cats = [...new Set(_contaData.map(e => e.category).filter(Boolean))].sort();
@@ -1909,7 +2373,12 @@ async function navContabilidad() {
     catSel.innerHTML = '<option value="">Todas las categorías</option>' +
       cats.map(c => `<option>${c}</option>`).join('');
 
-    _renderConta(_contaData);
+    if ($('conta-pay-date') && !$('conta-pay-date').value) {
+      $('conta-pay-date').value = new Date().toISOString().split('T')[0];
+    }
+
+    filterConta();
+    _renderPaymentBatches();
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
 }
 
@@ -1917,14 +2386,17 @@ function filterConta() {
   const q     = $('conta-search').value.toLowerCase();
   const tipo  = $('conta-filter-tipo').value;
   const cat   = $('conta-filter-cat').value;
+  const pago  = $('conta-filter-pago').value;
   const desde = $('conta-filter-desde').value;
   const hasta = $('conta-filter-hasta').value;
 
   const all = state.expenses.filter(e => e.status === 'AUTORIZADO');
   const filtered = all.filter(e => {
-    if (q && !`${e.docNumber} ${e.provider} ${e.title} ${e.category}`.toLowerCase().includes(q)) return false;
+    const paymentStatus = _getPaymentStatus(e);
+    if (q && !`${e.docNumber} ${e.provider} ${e.title} ${e.category} ${e.email}`.toLowerCase().includes(q)) return false;
     if (tipo && e.docType !== tipo)      return false;
     if (cat  && e.category !== cat)     return false;
+    if (pago && paymentStatus !== pago) return false;
     if (desde && e.fechaGasto < desde)  return false;
     if (hasta && e.fechaGasto > hasta)  return false;
     return true;
@@ -1933,41 +2405,56 @@ function filterConta() {
 }
 
 function _renderConta(exps) {
+  _contaFiltered = exps;
   // ── KPIs ──
-  const total   = exps.reduce((s, e) => s + e.total, 0);
-  const boletas = exps.filter(e => e.docType === 'BOLETA').length;
-  const facturas= exps.filter(e => e.docType === 'FACTURA').length;
-  const otros   = exps.filter(e => e.docType !== 'BOLETA' && e.docType !== 'FACTURA').length;
+  const total    = exps.reduce((s, e) => s + e.total, 0);
+  const boletas  = exps.filter(e => e.docType === 'BOLETA').length;
+  const facturas = exps.filter(e => e.docType === 'FACTURA').length;
+  const pending  = exps.filter(e => _getPaymentStatus(e) === 'PENDIENTE_PAGO').length;
+  const preparing = exps.filter(e => _getPaymentStatus(e) === 'EN_PREPARACION_PAGO').length;
+  const paid     = exps.filter(e => _getPaymentStatus(e) === 'PAGADO').length;
 
   $('conta-kpi-count').textContent   = exps.length;
   $('conta-kpi-total').textContent   = fmt(total);
+  $('conta-kpi-pending').textContent = pending;
+  $('conta-kpi-preparing').textContent = preparing;
+  $('conta-kpi-paid').textContent    = paid;
   $('conta-kpi-boleta').textContent  = boletas;
   $('conta-kpi-factura').textContent = facturas;
-  $('conta-kpi-otros').textContent   = otros;
   $('conta-subtitle').textContent    = exps.length
-    ? `${exps.length} documento${exps.length > 1 ? 's' : ''} autorizado${exps.length > 1 ? 's' : ''}`
+    ? `${exps.length} documento${exps.length > 1 ? 's' : ''} autorizado${exps.length > 1 ? 's' : ''} · ${pending} pendiente${pending === 1 ? '' : 's'} · ${preparing} en preparación`
     : 'Sin documentos autorizados';
+
+  _renderContaSelectionSummary();
 
   // ── Tabla principal ──
   const tbody = $('conta-tbody');
   if (!exps.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="empty-row">Sin documentos autorizados</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" class="empty-row">Sin documentos autorizados</td></tr>';
   } else {
-    // Número de folio = rowIndex en la hoja (identificador único estable)
     tbody.innerHTML = exps.map(e => `
       <tr class="table-row" onclick="openDetail(${e.rowIndex},'dashboard')">
+        <td class="td" onclick="event.stopPropagation()">
+          <input
+            type="checkbox"
+            class="conta-check"
+            ${_contaSelection.has(e.rowIndex) ? 'checked' : ''}
+            onchange="toggleContaSelection(${e.rowIndex})">
+        </td>
         <td class="td td-bold conta-folio">${e.docNumber || '—'}</td>
         <td class="td">${fmtDate(e.fechaGasto)}</td>
         <td class="td"><span class="tag">${e.docType}</span></td>
         <td class="td td-bold">${e.provider || '—'}</td>
         <td class="td td-muted">${e.category}</td>
         <td class="td">${e.title}</td>
-        <td class="td td-muted">${e.email}</td>
+        <td class="td td-muted">${_getUserName(e.email)}</td>
         <td class="td td-bold" style="color:#111827">${fmt(e.total)}</td>
+        <td class="td">${_paymentBadge(_getPaymentStatus(e), e.paymentBatchId)}</td>
+        <td class="td td-muted">${e.paymentDate ? fmtDate(e.paymentDate) : '—'}</td>
         <td class="td td-muted" style="font-size:12px">${_getUserName(e.approverEmail)}</td>
         <td class="td">
           ${e.receipts?.length
-            ? e.receipts.map(r => `<a href="${r.url}" target="_blank" class="conta-file-link">📎</a>`).join(' ')
+            ? e.receipts.map(r => `<button type="button" class="conta-file-link" style="background:none;border:none;cursor:pointer" onclick='event.stopPropagation();openReceipt(${JSON.stringify(r)})'>📎</button>`).join(' ')
             : '<span class="text-muted">—</span>'}
         </td>
       </tr>`).join('');
@@ -1980,6 +2467,548 @@ function _renderConta(exps) {
   // ── Resumen por tipo ──
   const byTipo = _groupAndSum(exps, 'docType');
   $('conta-by-tipo').innerHTML = _renderBreakdown(byTipo, total);
+}
+
+function _getSelectedContaExpenses() {
+  return state.expenses
+    .filter(e => _contaSelection.has(e.rowIndex))
+    .sort((a, b) => String(a.fechaGasto || '').localeCompare(String(b.fechaGasto || '')) || a.rowIndex - b.rowIndex);
+}
+
+function _getPaymentExpenses(payment) {
+  let rows = [];
+  try {
+    rows = JSON.parse(payment?.expenseRowsJson || '[]');
+  } catch {
+    rows = [];
+  }
+  return state.expenses.filter(e => rows.includes(e.rowIndex));
+}
+
+function _sortPaymentsDesc(list) {
+  return [...(list || [])].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')) || b.rowIndex - a.rowIndex);
+}
+
+function _renderPaymentBatches() {
+  const tbody = $('conta-payments-tbody');
+  if (!tbody) return;
+  const payments = _sortPaymentsDesc(state.payments);
+  if (!payments.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row">Sin lotes de pago registrados</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = payments.map(payment => {
+    const canFinalize = payment.paymentStatus === 'EN_PREPARACION_PAGO';
+    const canCancel = payment.paymentStatus === 'EN_PREPARACION_PAGO' || payment.paymentStatus === 'PAGADO';
+    return `
+      <tr>
+        <td class="td td-bold conta-folio">${_escapeHtml(payment.paymentBatchId)}</td>
+        <td class="td">${_escapeHtml(payment.payeeName || _getUserName(payment.payeeEmail))}</td>
+        <td class="td">${_paymentBadge(payment.paymentStatus, '')}</td>
+        <td class="td">${payment.paymentDate ? fmtDate(payment.paymentDate) : '—'}</td>
+        <td class="td td-bold">${fmt(payment.totalAmount)}</td>
+        <td class="td">${_escapeHtml(payment.paymentRef || '—')}</td>
+        <td class="td" title="${_escapeHtml(payment.folios || '')}" style="font-size:11px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default">
+          <strong>${payment.documentCount}</strong>${payment.folios ? ` · ${_escapeHtml(payment.folios)}` : ''}
+        </td>
+        <td class="td">${payment.packetUrl ? `<a class="conta-batch-link" href="${payment.packetUrl}" target="_blank" rel="noopener">Abrir PDF</a>` : '—'}</td>
+        <td class="td">
+          <div class="conta-batch-actions">
+            ${canFinalize ? `<button type="button" class="btn-secondary" onclick="finalizePaymentBatch(${payment.rowIndex})">Finalizar</button>` : ''}
+            ${canCancel ? `<button type="button" class="btn-secondary" onclick="cancelPaymentBatch(${payment.rowIndex})">Anular</button>` : ''}
+            <button type="button" class="btn-secondary" onclick="reprintPaymentBatch(${payment.rowIndex})">Reimprimir</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function _renderContaSelectionSummary() {
+  const summaryEl = $('conta-payment-summary');
+  if (!summaryEl) return;
+
+  const selected = _getSelectedContaExpenses();
+  if (!selected.length) {
+    summaryEl.textContent = 'Selecciona rendiciones autorizadas del mismo rendidor para generar el comprobante.';
+    return;
+  }
+
+  const total = selected.reduce((sum, exp) => sum + exp.total, 0);
+  summaryEl.textContent = `${selected.length} rendición${selected.length === 1 ? '' : 'es'} seleccionada${selected.length === 1 ? '' : 's'} · Rendidor: ${_getUserName(selected[0].email)} · Total a transferir: ${fmt(total)}`;
+}
+
+function clearContaSelection() {
+  _contaSelection.clear();
+  _renderConta(_contaFiltered);
+}
+
+function toggleContaSelection(rowIndex) {
+  const exp = state.expenses.find(item => item.rowIndex === rowIndex);
+  if (!exp || exp.status !== 'AUTORIZADO') return;
+
+  if (_contaSelection.has(rowIndex)) {
+    _contaSelection.delete(rowIndex);
+    _renderConta(_contaFiltered);
+    return;
+  }
+
+  const selected = _getSelectedContaExpenses();
+  if (selected.length && selected[0].email !== exp.email) {
+    toast('El comprobante debe corresponder a un solo rendidor.', 'error');
+    return;
+  }
+
+  _contaSelection.add(rowIndex);
+  _renderConta(_contaFiltered);
+}
+
+async function _buildPaymentPrintSnapshot(expenses) {
+  const snapshot = [];
+  for (const exp of expenses) {
+    const cloned = { ...exp, receipts: [] };
+    const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
+    for (const receipt of receipts) {
+      const clonedReceipt = { ...receipt };
+      if (receipt?.id) {
+        try {
+          const content = await getReceiptContent(receipt.id);
+          if (content?.data && content?.mime) {
+            clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
+            clonedReceipt.mime = content.mime;
+          }
+        } catch (err) {
+          clonedReceipt.loadError = err.message;
+        }
+      }
+      cloned.receipts.push(clonedReceipt);
+    }
+    snapshot.push(cloned);
+  }
+  return snapshot;
+}
+
+function _buildPaymentAttachments(expenses) {
+  const sections = [];
+  let idx = 1;
+  const total = expenses.length;
+
+  expenses.forEach((exp, expIdx) => {
+    const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
+    const expRef = `${_escapeHtml(exp.docType || 'DOC')} ${_escapeHtml(exp.docNumber || 'S/F')} · ${_escapeHtml(exp.provider || 'Sin proveedor')} · ${fmt(exp.total)}`;
+
+    if (!receipts.length) {
+      sections.push(`
+        <section style="page-break-after:always;padding:28px 32px;font-family:Arial,sans-serif;color:#111827">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;border-bottom:1px solid #e5e7eb;padding-bottom:5px;margin-bottom:12px">
+            Respaldo ${idx} de ${total}
+          </div>
+          <div style="font-size:14px;font-weight:800;margin-bottom:3px">Rendición ${expIdx + 1}: ${expRef}</div>
+          <div style="font-size:12px;color:#6b7280;margin-bottom:20px">${_escapeHtml(exp.title)} · ${_escapeHtml(exp.category)}</div>
+          <p style="color:#9ca3af;font-style:italic">Sin archivos adjuntos para este documento.</p>
+        </section>`);
+      idx++;
+      return;
+    }
+
+    receipts.forEach((receipt, rIdx) => {
+      const label = `Respaldo ${idx} de ${total}${receipts.length > 1 ? ` (adjunto ${rIdx + 1}/${receipts.length})` : ''}`;
+      const source = receipt.inlineUrl || receipt.url || '';
+      const mime = String(receipt.mime || '');
+      let body;
+
+      if (receipt.loadError) {
+        body = `<p style="color:#dc2626">No se pudo cargar el adjunto: ${_escapeHtml(receipt.loadError)}</p>`;
+      } else if (source && mime.startsWith('image/')) {
+        body = `<img src="${source}" alt="${_escapeHtml(receipt.name || label)}"
+                  style="max-width:100%;max-height:940px;display:block;margin:0 auto;border:1px solid #e5e7eb;border-radius:8px">`;
+      } else if (source && mime.includes('pdf')) {
+        body = `<div style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;height:940px;background:#fff">
+                  <iframe src="${source}#toolbar=0&navpanes=0&scrollbar=0"
+                    title="${_escapeHtml(receipt.name || label)}"
+                    style="width:100%;height:100%;border:none"></iframe>
+                </div>`;
+      } else if (source) {
+        body = `<p><a href="${source}" target="_blank" rel="noopener" style="color:#1d4ed8">Abrir archivo: ${_escapeHtml(receipt.name || label)}</a></p>`;
+      } else {
+        body = `<p style="color:#9ca3af;font-style:italic">Adjunto sin URL disponible.</p>`;
+      }
+
+      sections.push(`
+        <section style="page-break-after:always;padding:28px 32px;font-family:Arial,sans-serif;color:#111827">
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#6b7280;border-bottom:1px solid #e5e7eb;padding-bottom:5px;margin-bottom:10px">
+            ${label}
+          </div>
+          <div style="font-size:13px;font-weight:800;margin-bottom:2px">Rendición ${expIdx + 1}: ${expRef}</div>
+          <div style="font-size:11px;color:#6b7280;margin-bottom:14px">
+            ${_escapeHtml(exp.title)} · Categoría: ${_escapeHtml(exp.category)} · Fecha: ${fmtDate(exp.fechaGasto)} · Archivo: ${_escapeHtml(receipt.name || '—')}
+          </div>
+          ${body}
+        </section>`);
+      idx++;
+    });
+  });
+  return sections.join('');
+}
+
+function _buildPaymentPacketHtml(payload, options = {}) {
+  const payment = payload || {};
+  const expenses = Array.isArray(payment.expenses) ? payment.expenses : [];
+  if (!expenses.length) return '';
+  const autoPrint = !!options.autoPrint;
+
+  const ownerEmail = expenses[0].email || '';
+  const ownerName  = _getUserName(ownerEmail) || ownerEmail;
+  const empresa    = expenses[0].empresa || '—';
+  const total      = expenses.reduce((sum, exp) => sum + exp.total, 0);
+  const emitDate   = fmtDate(new Date().toISOString().split('T')[0]);
+
+  const rows = expenses.map((exp, i) => `
+    <tr style="${i % 2 === 1 ? 'background:#f8fafc' : ''}">
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb;text-align:center">${i + 1}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${fmtDate(exp.fechaGasto)}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docType || '—')}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docNumber || '—')}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.provider || '—')}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.category || '—')}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.title || '—')}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb;font-size:10px">${_escapeHtml(_getUserName(exp.approverEmail) || exp.approverEmail || '—')}</td>
+      <td style="padding:7px 5px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${fmt(exp.total)}</td>
+    </tr>`).join('');
+
+  const attachments = _buildPaymentAttachments(expenses);
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Comprobante ${_escapeHtml(payment.paymentBatchId || '')}</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:12px}
+    .page{page-break-after:always;padding:28px 32px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e40af;margin-bottom:18px}
+    .chip{display:inline-block;background:#1e40af;color:#fff;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:.06em;margin-bottom:6px}
+    .header-title{font-size:20px;font-weight:800;color:#1e40af;margin:4px 0 3px}
+    .header-sub{font-size:11px;color:#6b7280}
+    .total-hdr .lbl{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}
+    .total-hdr .amt{font-size:26px;font-weight:800;color:#1e40af;line-height:1.1;margin-top:2px;text-align:right}
+    .sec{margin-top:16px}
+    .sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7280;border-bottom:1px solid #e5e7eb;padding-bottom:4px;margin-bottom:8px}
+    .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    .ic .lbl{font-size:10px;color:#9ca3af;margin-bottom:2px}
+    .ic .val{font-size:12px;font-weight:700;word-break:break-all}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-top:4px}
+    thead th{background:#1e40af;color:#fff;padding:7px 5px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+    .total-row td{font-weight:800;font-size:13px;border-top:2px solid #1e40af;background:#eff6ff;padding:9px 5px}
+    .sigs{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}
+    .sig{border:1px solid #d1d5db;border-radius:8px;padding:10px 14px;min-height:82px}
+    .sig strong{display:block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin-bottom:6px}
+    .sig .sn{font-size:12px;font-weight:700}
+    .sig .sl{border-bottom:1px solid #d1d5db;margin-top:30px}
+    .sig .se{font-size:9px;color:#9ca3af;margin-top:3px}
+    @media print{body{background:#fff}}
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="chip">COMPROBANTE DE PAGO · ${_escapeHtml(payment.paymentBatchId || 'SIN ID')}</div>
+      <div class="header-title">Rendición de Gastos</div>
+      <div class="header-sub">Emitido el ${emitDate} · Empresa: ${_escapeHtml(empresa)} · Procesado por: ${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+    </div>
+    <div class="total-hdr">
+      <div class="lbl">Total a transferir</div>
+      <div class="amt">${fmt(total)}</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Datos del rendidor</div>
+    <div class="grid3">
+      <div class="ic"><div class="lbl">Nombre</div><div class="val">${_escapeHtml(ownerName)}</div></div>
+      <div class="ic"><div class="lbl">Email</div><div class="val">${_escapeHtml(ownerEmail)}</div></div>
+      <div class="ic"><div class="lbl">Empresa</div><div class="val">${_escapeHtml(empresa)}</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Datos del pago</div>
+    <div class="grid4">
+      <div class="ic"><div class="lbl">Fecha transferencia</div><div class="val">${fmtDate(payment.paymentDate || '')}</div></div>
+      <div class="ic"><div class="lbl">Referencia / N° Transferencia</div><div class="val">${_escapeHtml(payment.paymentRef || '—')}</div></div>
+      <div class="ic"><div class="lbl">N° documentos</div><div class="val">${expenses.length}</div></div>
+      <div class="ic"><div class="lbl">Observaciones</div><div class="val">${_escapeHtml(payment.paymentNotes || '—')}</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-title">Desglose de rendiciones autorizadas</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:24px">#</th>
+          <th style="width:68px">Fecha</th>
+          <th style="width:50px">Tipo Doc</th>
+          <th style="width:62px">N° Folio</th>
+          <th>Proveedor</th>
+          <th>Categoría</th>
+          <th>Concepto</th>
+          <th style="width:88px">Autorizado por</th>
+          <th style="width:76px;text-align:right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+        <tr class="total-row">
+          <td colspan="8" style="text-align:right;padding-right:8px">TOTAL A TRANSFERIR</td>
+          <td style="text-align:right">${fmt(total)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sigs">
+    <div class="sig">
+      <strong>Recibe conforme (Rendidor)</strong>
+      <div class="sn">${_escapeHtml(ownerName)}</div>
+      <div class="sl"></div>
+      <div class="se">${_escapeHtml(ownerEmail)}</div>
+    </div>
+    <div class="sig">
+      <strong>Autoriza transferencia</strong>
+      <div class="sn">${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+      <div class="sl"></div>
+      <div class="se">${_escapeHtml(payment.paymentBy || '')}</div>
+    </div>
+  </div>
+</div>
+
+${attachments}
+
+${autoPrint ? `<script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});<\/script>` : ''}
+</body>
+</html>`;
+}
+
+async function _persistPaymentStatus(expenses, payload) {
+  for (const exp of expenses) {
+    await updateExpensePayment(exp.rowIndex, payload);
+    Object.assign(exp, payload);
+  }
+}
+
+async function preparePaymentBatch() {
+  const selected = _getSelectedContaExpenses();
+  if (!selected.length) {
+    toast('Selecciona al menos un documento disponible para preparar el lote.', 'info');
+    return;
+  }
+  if (selected.some(exp => exp.email !== selected[0].email)) {
+    toast('El lote de pago debe corresponder a un solo rendidor.', 'error');
+    return;
+  }
+
+  const paymentDate = $('conta-pay-date')?.value || new Date().toISOString().split('T')[0];
+  const paymentRef = ($('conta-pay-ref')?.value || '').trim();
+  const paymentNotes = ($('conta-pay-notes')?.value || '').trim();
+  if (!paymentRef) {
+    toast('Ingresa una referencia del pago para la trazabilidad.', 'error');
+    $('conta-pay-ref')?.focus();
+    return;
+  }
+
+  const currentUser = getCurrentUser() || {};
+  const paymentBatchId = _buildPaymentBatchId();
+  const paymentBy = (currentUser.email || '').toLowerCase();
+
+  loading(true);
+  try {
+    const snapshot = await _buildPaymentPrintSnapshot(selected);
+    const paymentPayload = {
+      paymentBatchId,
+      paymentDate,
+      paymentRef,
+      paymentNotes,
+      paymentBy,
+      paymentByName: _getUserName(paymentBy),
+      expenses: snapshot
+    };
+    const html = _buildPaymentPacketHtml(paymentPayload, { autoPrint: false });
+    const savedPacket = await savePaymentPacket(paymentBatchId, html);
+    const rowIndexes = selected.map(exp => exp.rowIndex);
+    const totalAmount = selected.reduce((sum, exp) => sum + exp.total, 0);
+    const record = {
+      paymentBatchId,
+      createdAt: new Date().toISOString(),
+      paymentStatus: 'EN_PREPARACION_PAGO',
+      paymentDate,
+      payeeEmail: selected[0].email,
+      payeeName: _getUserName(selected[0].email),
+      documentCount: selected.length,
+      totalAmount,
+      paymentRef,
+      paymentNotes,
+      processedBy: paymentBy,
+      expenseRowsJson: JSON.stringify(rowIndexes),
+      folios: selected.map(exp => exp.docNumber || `fila-${exp.rowIndex}`).join(', '),
+      packetFileId: savedPacket.fileId || '',
+      packetUrl: savedPacket.url || '',
+      packetMime: savedPacket.mime || 'application/pdf'
+    };
+    await addPaymentRecord(record);
+    const toUpdateStatus = selected.filter(exp => {
+      const ps = _getPaymentStatus(exp);
+      return ps !== 'PAGADO' && ps !== 'EN_PREPARACION_PAGO';
+    });
+    if (toUpdateStatus.length) {
+      await _persistPaymentStatus(toUpdateStatus, {
+        paymentStatus: 'EN_PREPARACION_PAGO',
+        paymentBatchId,
+        paymentDate,
+        paymentRef,
+        paymentBy,
+        paymentNotes
+      });
+    }
+    await addAudit('COMPROBANTE_GENERADO', paymentBy, { paymentBatchId, rows: rowIndexes, totalAmount, paymentRef });
+    state.payments = await getPayments();
+
+    clearContaSelection();
+    filterConta();
+    _renderPaymentBatches();
+
+    if (savedPacket.url) {
+      toastLink(
+        `Comprobante generado · ${_getUserName(selected[0].email)} · ${selected.length} doc${selected.length === 1 ? '' : 's'} · ${fmt(totalAmount)}`,
+        'Abrir comprobante PDF',
+        savedPacket.url
+      );
+    } else {
+      toast(`Comprobante guardado · ${_getUserName(selected[0].email)} · ${fmt(totalAmount)}`, 'success');
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function finalizePaymentBatch(paymentRowIndex) {
+  const payment = state.payments.find(item => item.rowIndex === paymentRowIndex);
+  if (!payment || payment.paymentStatus !== 'EN_PREPARACION_PAGO') {
+    toast('El lote seleccionado no está disponible para finalizar.', 'info');
+    return;
+  }
+
+  const expenses = _getPaymentExpenses(payment);
+  if (!expenses.length) {
+    toast('No se encontraron documentos asociados al lote.', 'error');
+    return;
+  }
+
+  loading(true);
+  try {
+    await _persistPaymentStatus(expenses, {
+      paymentStatus: 'PAGADO',
+      paymentBatchId: payment.paymentBatchId,
+      paymentDate: payment.paymentDate,
+      paymentRef: payment.paymentRef,
+      paymentBy: payment.processedBy,
+      paymentNotes: payment.paymentNotes
+    });
+    const updatedPayment = { ...payment, paymentStatus: 'PAGADO' };
+    await updatePaymentRecord(payment.rowIndex, updatedPayment);
+    await addAudit('PAGO_FINALIZADO', getCurrentUser()?.email || payment.processedBy, { paymentBatchId: payment.paymentBatchId, rows: expenses.map(exp => exp.rowIndex) });
+    Object.assign(payment, updatedPayment);
+    filterConta();
+    _renderPaymentBatches();
+    toast(`Lote ${payment.paymentBatchId} marcado como pagado.`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function cancelPaymentBatch(paymentRowIndex) {
+  const payment = state.payments.find(item => item.rowIndex === paymentRowIndex);
+  if (!payment || (payment.paymentStatus !== 'EN_PREPARACION_PAGO' && payment.paymentStatus !== 'PAGADO')) {
+    toast('El lote seleccionado no puede anularse.', 'info');
+    return;
+  }
+
+  const expenses = _getPaymentExpenses(payment);
+  if (!expenses.length) {
+    toast('No se encontraron documentos asociados al lote.', 'error');
+    return;
+  }
+
+  loading(true);
+  try {
+    await _persistPaymentStatus(expenses, {
+      paymentStatus: 'ANULADO_PAGO',
+      paymentBatchId: payment.paymentBatchId,
+      paymentDate: payment.paymentDate,
+      paymentRef: payment.paymentRef,
+      paymentBy: payment.processedBy,
+      paymentNotes: payment.paymentNotes
+    });
+    const updatedPayment = { ...payment, paymentStatus: 'ANULADO_PAGO' };
+    await updatePaymentRecord(payment.rowIndex, updatedPayment);
+    await addAudit('PAGO_ANULADO', getCurrentUser()?.email || payment.processedBy, { paymentBatchId: payment.paymentBatchId, rows: expenses.map(exp => exp.rowIndex) });
+    Object.assign(payment, updatedPayment);
+    filterConta();
+    _renderPaymentBatches();
+    toast(`Lote ${payment.paymentBatchId} anulado correctamente.`, 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function reprintPaymentBatch(paymentRowIndex) {
+  const payment = state.payments.find(item => item.rowIndex === paymentRowIndex);
+  if (!payment) {
+    toast('Lote no encontrado.', 'error');
+    return;
+  }
+  if (payment.packetUrl) {
+    toastLink('Comprobante listo', 'Abrir comprobante PDF', payment.packetUrl);
+    return;
+  }
+
+  loading(true);
+  try {
+    const expenses = await _buildPaymentPrintSnapshot(_getPaymentExpenses(payment));
+    const paymentPayload = {
+      paymentBatchId: payment.paymentBatchId,
+      paymentDate: payment.paymentDate,
+      paymentRef: payment.paymentRef,
+      paymentNotes: payment.paymentNotes,
+      paymentBy: payment.processedBy,
+      paymentByName: _getUserName(payment.processedBy),
+      expenses
+    };
+    const html = _buildPaymentPacketHtml(paymentPayload, { autoPrint: false });
+    const savedPacket = await savePaymentPacket(payment.paymentBatchId, html);
+    if (savedPacket.url) {
+      toastLink('Comprobante regenerado', 'Abrir comprobante PDF', savedPacket.url);
+    } else {
+      toast('Comprobante generado, revisa Google Drive.', 'success');
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
+}
+
+async function generatePaymentPacket() {
+  return preparePaymentBatch();
 }
 
 function _groupAndSum(exps, field) {
@@ -2010,12 +3039,13 @@ function _renderBreakdown(entries, grandTotal) {
 
 function exportContaCSV() {
   const exps = state.expenses.filter(e => e.status === 'AUTORIZADO');
-  const headers = ['N° Folio','Fecha','Tipo Doc','N° Documento','Proveedor','Categoría','Concepto','Empleado','Total','Autorizado por','Observaciones'];
+  const headers = ['N° Folio','Fecha','Tipo Doc','N° Documento','Proveedor','Categoría','Concepto','Empleado','Total','Estado pago','Fecha pago','Referencia pago','Lote pago','Pagado por','Observaciones pago','Autorizado por','Observaciones'];
   const rows = exps.map(e => [
     e.docNumber || '—',
     e.fechaGasto, e.docType, e.docNumber, e.provider,
     e.category, e.title, e.email, e.total,
-    e.approverEmail, e.observations
+    _getPaymentStatusLabel(_getPaymentStatus(e)), e.paymentDate, e.paymentRef,
+    e.paymentBatchId, e.paymentBy, e.paymentNotes, e.approverEmail, e.observations
   ].map(v => `"${(v||'').toString().replace(/"/g,'""')}"`));
   const csv = '\uFEFF' + [headers.map(h=>`"${h}"`), ...rows].map(r => r.join(',')).join('\n');
   const a = Object.assign(document.createElement('a'), {

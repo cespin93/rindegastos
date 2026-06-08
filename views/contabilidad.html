@@ -21,16 +21,24 @@
       <div id="conta-kpi-total" class="conta-kpi-value val-green">$0</div>
     </div>
     <div class="conta-kpi">
+      <div class="conta-kpi-label">Pendientes de pago</div>
+      <div id="conta-kpi-pending" class="conta-kpi-value val-amber">0</div>
+    </div>
+    <div class="conta-kpi">
+      <div class="conta-kpi-label">En preparación</div>
+      <div id="conta-kpi-preparing" class="conta-kpi-value val-blue">0</div>
+    </div>
+    <div class="conta-kpi">
+      <div class="conta-kpi-label">Pagados</div>
+      <div id="conta-kpi-paid" class="conta-kpi-value val-green">0</div>
+    </div>
+    <div class="conta-kpi">
       <div class="conta-kpi-label">Boletas</div>
       <div id="conta-kpi-boleta" class="conta-kpi-value">0</div>
     </div>
     <div class="conta-kpi">
       <div class="conta-kpi-label">Facturas</div>
       <div id="conta-kpi-factura" class="conta-kpi-value">0</div>
-    </div>
-    <div class="conta-kpi">
-      <div class="conta-kpi-label">Otros</div>
-      <div id="conta-kpi-otros" class="conta-kpi-value">0</div>
     </div>
   </div>
 
@@ -50,6 +58,13 @@
       <select id="conta-filter-cat" class="select-filter" onchange="filterConta()">
         <option value="">Todas las categorías</option>
       </select>
+      <select id="conta-filter-pago" class="select-filter" onchange="filterConta()">
+        <option value="">Todos los pagos</option>
+        <option value="PENDIENTE_PAGO">Pendientes de pago</option>
+        <option value="EN_PREPARACION_PAGO">En preparación</option>
+        <option value="PAGADO">Pagados</option>
+        <option value="ANULADO_PAGO">Anulados</option>
+      </select>
       <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151">
         <label style="font-size:13px;font-weight:400;margin:0">Desde</label>
         <input id="conta-filter-desde" type="date" class="select-filter" onchange="filterConta()">
@@ -58,10 +73,36 @@
       </div>
     </div>
 
+    <div class="conta-payment-panel">
+      <div>
+        <div class="conta-payment-title">Generar comprobante de pago</div>
+        <div id="conta-payment-summary" class="conta-payment-summary">Selecciona rendiciones autorizadas del mismo rendidor para generar el comprobante.</div>
+      </div>
+      <div class="conta-payment-fields">
+        <div class="conta-payment-field">
+          <label for="conta-pay-date">Fecha de pago</label>
+          <input id="conta-pay-date" type="date" class="select-filter">
+        </div>
+        <div class="conta-payment-field">
+          <label for="conta-pay-ref">Referencia</label>
+          <input id="conta-pay-ref" type="text" class="input-filter" placeholder="Transferencia / egreso / folio banco">
+        </div>
+        <div class="conta-payment-field conta-payment-field-wide">
+          <label for="conta-pay-notes">Observaciones</label>
+          <input id="conta-pay-notes" type="text" class="input-filter" placeholder="Opcional">
+        </div>
+      </div>
+      <div class="conta-payment-actions">
+        <button class="btn-secondary" type="button" onclick="clearContaSelection()">Limpiar selección</button>
+        <button class="btn-primary" type="button" onclick="preparePaymentBatch()">Generar comprobante de pago</button>
+      </div>
+    </div>
+
     <div style="overflow-x:auto">
       <table>
         <thead>
           <tr>
+            <th>Pagar</th>
             <th>N° Documento</th>
             <th>Fecha</th>
             <th>Tipo Doc.</th>
@@ -70,11 +111,40 @@
             <th>Concepto</th>
             <th>Empleado</th>
             <th>Total</th>
+            <th>Estado pago</th>
+            <th>Fecha pago</th>
             <th>Autorizado por</th>
             <th>Archivos</th>
           </tr>
         </thead>
         <tbody id="conta-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="table-card" style="margin-top:24px">
+    <div class="conta-batches-header">
+      <div>
+        <div class="conta-payment-title">Lotes de pago</div>
+        <div class="conta-payment-summary">Historial de lotes preparados, pagados o anulados para reimpresión y seguimiento.</div>
+      </div>
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Lote</th>
+            <th>Rendidor</th>
+            <th>Estado</th>
+            <th>Fecha pago</th>
+            <th>Total</th>
+            <th>Referencia</th>
+            <th>Docs / Folios</th>
+            <th>Comprobante</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="conta-payments-tbody"></tbody>
       </table>
     </div>
   </div>

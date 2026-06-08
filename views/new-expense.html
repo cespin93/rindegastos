@@ -11,6 +11,16 @@
     </div>
   </div>
 
+  <div style="max-width:960px;margin:0 0 20px 0;background:linear-gradient(135deg,#fff1f2 0%,#ffedd5 100%);border:2px solid #f97316;border-left:8px solid #dc2626;border-radius:14px;padding:16px 18px;box-shadow:0 10px 24px rgba(220,38,38,0.12)">
+    <div style="display:flex;gap:12px;align-items:flex-start">
+      <div style="width:34px;height:34px;border-radius:999px;background:#dc2626;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex:0 0 auto">!</div>
+      <div>
+        <div style="font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#b91c1c;margin-bottom:4px">Importante</div>
+        <div style="font-size:15px;line-height:1.45;font-weight:700;color:#7c2d12">Para asegurar su correcta gestion, las rendiciones mensuales deben enviarse hasta el dia 5 del mes siguiente. Agradecemos respetar este plazo.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── MODO INDIVIDUAL ── -->
   <div id="single-layout" style="display:flex;gap:24px;align-items:flex-start">
   <form id="expense-form" onsubmit="submitExpense(event)" style="flex:1;min-width:0">
@@ -28,12 +38,19 @@
         </div>
         <div>
           <label for="f-total">Monto (CLP) *</label>
-          <input id="f-total" name="total" type="number" min="1" step="1" required
-                 placeholder="0" class="input-field">
+             <input id="f-total" name="total" type="text" required
+               placeholder="$0" class="input-field"
+               inputmode="numeric" data-money-input="true" autocomplete="off">
         </div>
         <div>
           <label for="form-category">Categoría *</label>
           <select id="form-category" name="category" required class="input-field">
+            <option value="">— Seleccionar —</option>
+          </select>
+        </div>
+        <div>
+          <label for="form-company">Empresa *</label>
+          <select id="form-company" name="empresa" required class="input-field" onchange="handleExpenseCompanyChange(this.value)">
             <option value="">— Seleccionar —</option>
           </select>
         </div>
@@ -107,13 +124,21 @@
 
   <!-- Panel de vista previa de documento -->
   <div id="doc-preview-panel" class="doc-preview-panel hidden">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <span style="font-size:13px;font-weight:600;color:#374151">Vista previa del documento</span>
-      <div id="doc-preview-nav" class="doc-preview-nav"></div>
+    <div class="doc-preview-header">
+      <div>
+        <div class="doc-preview-eyebrow">Vista previa del documento</div>
+        <div id="doc-preview-name" class="doc-preview-name">Adjunta un documento</div>
+        <div id="doc-preview-meta" class="doc-preview-meta">Podras revisarlo aqui antes de registrar la rendicion.</div>
+      </div>
+      <div class="doc-preview-actions">
+        <div id="doc-preview-nav" class="doc-preview-nav"></div>
+        <a id="doc-preview-open" class="doc-preview-open hidden" href="#" target="_blank" rel="noopener noreferrer">Abrir</a>
+      </div>
     </div>
     <div id="doc-preview-content" class="doc-preview-content">
       <span class="doc-preview-empty">📎 Adjunta un documento<br>para previsualizarlo aquí</span>
     </div>
+    <div id="doc-preview-strip" class="doc-preview-strip hidden"></div>
   </div>
   </div><!-- /single-layout -->
 
@@ -127,6 +152,12 @@
           <label for="bulk-batch-name">Nombre del conjunto *</label>
           <input id="bulk-batch-name" type="text" class="input-field"
                  placeholder="Ej: Rendición Fondo Fijo Marzo" required>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <label for="bulk-company">Empresa *</label>
+          <select id="bulk-company" class="input-field" required onchange="handleExpenseCompanyChange(this.value)">
+            <option value="">— Seleccionar —</option>
+          </select>
         </div>
         <div style="flex:1;min-width:200px">
           <label for="bulk-approver">Aprobador</label>
