@@ -1509,7 +1509,7 @@ function _checkDuplicateFolio(provider, docNumber, excludeExpenses = []) {
 async function submitExpense(ev) {
   ev.preventDefault();
   const f = ev.target;
-  const empresa = (f.empresa.value || '').trim();
+  const empresa = _getSelectedExpenseCompany();
   if (!empresa) {
     toast('Selecciona una empresa', 'error');
     return;
