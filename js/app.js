@@ -1137,9 +1137,15 @@ async function navGerencia() {
     showView('view-gerencia');
     const all = await getExpenses();
     _mergeExpenses(all);
-    // Solo rendiciones con APROBADO (esperando autorización gerencial)
-    const toAuthorize = all.filter(e => e.status === 'APROBADO' && _canAccessExpense(e));
-    _renderGerencia(toAuthorize);
+    const user = getCurrentUser();
+    const myEmail = user?.email?.toLowerCase() || '';
+    // Rendiciones propias del gerente (todas, para que las vea sin importar estado)
+    const myOwn = (state.role === 'GERENTE' && myEmail)
+      ? all.filter(e => e.email === myEmail).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      : [];
+    // Cola de autorización: APROBADO de otros rendidores dentro del scope del gerente
+    const toAuthorize = all.filter(e => e.status === 'APROBADO' && e.email !== myEmail && _canAccessExpense(e));
+    _renderGerencia(toAuthorize, myOwn);
     const countText = toAuthorize.length
       ? `${toAuthorize.length} pendiente${toAuthorize.length > 1 ? 's' : ''} de autorización`
       : 'Sin rendiciones pendientes de autorización';
@@ -1148,9 +1154,9 @@ async function navGerencia() {
   } catch (e) { toast(e.message, 'error'); } finally { loading(false); }
 }
 
-function _renderGerencia(exps) {
+function _renderGerencia(exps, myOwn = []) {
   const el = $('gerencia-list');
-  if (!exps.length) {
+  if (!exps.length && !myOwn.length) {
     el.innerHTML = `
       <div class="empty-approvals">
         <div style="font-size:48px;margin-bottom:12px">🏛</div>
@@ -1159,61 +1165,100 @@ function _renderGerencia(exps) {
     return;
   }
 
-  // Agrupar por batchName
-  const batches = {};
-  const singles = [];
-  for (const e of exps) {
-    if (e.batchName) (batches[e.batchName] = batches[e.batchName] || []).push(e);
-    else singles.push(e);
-  }
-
   let html = '';
 
-  // Conjuntos (batch)
-  for (const [name, list] of Object.entries(batches)) {
-    const total     = list.reduce((s, e) => s + e.total, 0);
-    const approvers = [...new Set(list.map(e => _getUserName(e.approverEmail)))].join(', ');
+  // ── Sección: Mis rendiciones (propias del gerente) ──
+  if (myOwn.length) {
     html += `
-      <div onclick="openBatchDetail('${name.replace(/'/g,"\\'")}','gerencia')" class="approval-card approval-card-gerencia">
-        <div class="approval-card-header">
-          <div>
-            <h3 class="approval-title">
-              <span style="font-size:11px;background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:10px;margin-right:6px">CONJUNTO</span>
-              ${name}
-            </h3>
-            <p class="approval-email">${list.length} gastos
-              <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${approvers}</span>
-            </p>
+      <div style="margin-bottom:24px">
+        <div style="font-size:12px;font-weight:700;color:#6b7280;letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">
+          Mis rendiciones
+        </div>`;
+    for (const e of myOwn) {
+      html += `
+        <div onclick="openDetail(${e.rowIndex},'gerencia')" class="approval-card" style="cursor:pointer;margin-bottom:8px">
+          <div class="approval-card-header">
+            <div style="min-width:0;flex:1">
+              <h3 class="approval-title" style="margin-bottom:2px">${_escapeHtml(e.title)}</h3>
+              <p class="approval-email">${_escapeHtml(e.docType)} N°${_escapeHtml(e.docNumber || '—')} • ${fmtDate(e.fechaGasto)}</p>
+            </div>
+            <div style="text-align:right;flex-shrink:0;margin-left:12px">
+              <div class="approval-amount">${fmt(e.total)}</div>
+              <div style="margin-top:4px">${badge(e.status)}</div>
+            </div>
           </div>
-          <span class="approval-amount">${fmt(total)}</span>
-        </div>
-        <div class="approval-tags">
-          ${badge('APROBADO')}
-          <span class="tag">📦 ${list.length} gastos pendientes de autorización</span>
-        </div>
-      </div>`;
+        </div>`;
+    }
+    html += `</div>`;
   }
 
-  // Gastos individuales
-  for (const e of singles) {
-    html += `
-      <div onclick="openDetail(${e.rowIndex},'gerencia')" class="approval-card approval-card-gerencia">
-        <div class="approval-card-header">
-          <div>
-            <h3 class="approval-title">${e.title}</h3>
-            <p class="approval-email">${e.email}
-              <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${_getUserName(e.approverEmail)}</span>
-            </p>
+  // ── Sección: Cola de autorización ──
+  if (exps.length) {
+    if (myOwn.length) {
+      html += `<div style="font-size:12px;font-weight:700;color:#6b7280;letter-spacing:.05em;text-transform:uppercase;margin-bottom:10px">
+        Pendientes de autorización
+      </div>`;
+    }
+
+    // Agrupar por batchName
+    const batches = {};
+    const singles = [];
+    for (const e of exps) {
+      if (e.batchName) (batches[e.batchName] = batches[e.batchName] || []).push(e);
+      else singles.push(e);
+    }
+
+    // Conjuntos (batch)
+    for (const [name, list] of Object.entries(batches)) {
+      const total     = list.reduce((s, e) => s + e.total, 0);
+      const approvers = [...new Set(list.map(e => _getUserName(e.approverEmail)))].join(', ');
+      html += `
+        <div onclick="openBatchDetail('${name.replace(/'/g,"\\'")}','gerencia')" class="approval-card approval-card-gerencia">
+          <div class="approval-card-header">
+            <div>
+              <h3 class="approval-title">
+                <span style="font-size:11px;background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:10px;margin-right:6px">CONJUNTO</span>
+                ${name}
+              </h3>
+              <p class="approval-email">${list.length} gastos
+                <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${approvers}</span>
+              </p>
+            </div>
+            <span class="approval-amount">${fmt(total)}</span>
           </div>
-          <span class="approval-amount">${fmt(e.total)}</span>
-        </div>
-        <div class="approval-tags">
-          <span class="tag">${e.category}</span>
-          <span class="tag">${e.docType}</span>
-          <span class="tag">${fmtDate(e.fechaGasto)}</span>
-          ${e.receipts?.length ? `<span class="tag tag-purple">📎 ${e.receipts.length} archivo(s)</span>` : ''}
-          ${badge('APROBADO')}
-        </div>
+          <div class="approval-tags">
+            ${badge('APROBADO')}
+            <span class="tag">📦 ${list.length} gastos pendientes de autorización</span>
+          </div>
+        </div>`;
+    }
+
+    // Gastos individuales
+    for (const e of singles) {
+      html += `
+        <div onclick="openDetail(${e.rowIndex},'gerencia')" class="approval-card approval-card-gerencia">
+          <div class="approval-card-header">
+            <div>
+              <h3 class="approval-title">${_escapeHtml(e.title)}</h3>
+              <p class="approval-email">${_escapeHtml(e.email)}
+                <span style="margin-left:6px;font-size:11px;color:#059669">• Aprobado por ${_getUserName(e.approverEmail)}</span>
+              </p>
+            </div>
+            <span class="approval-amount">${fmt(e.total)}</span>
+          </div>
+          <div class="approval-tags">
+            <span class="tag">${_escapeHtml(e.category)}</span>
+            <span class="tag">${_escapeHtml(e.docType)}</span>
+            <span class="tag">${fmtDate(e.fechaGasto)}</span>
+            ${e.receipts?.length ? `<span class="tag tag-purple">📎 ${e.receipts.length} archivo(s)</span>` : ''}
+            ${badge('APROBADO')}
+          </div>
+        </div>`;
+    }
+  } else if (myOwn.length) {
+    html += `
+      <div style="padding:16px;background:#f9fafb;border-radius:10px;text-align:center;color:#9ca3af;font-size:13px">
+        Sin rendiciones pendientes de autorización gerencial
       </div>`;
   }
 
