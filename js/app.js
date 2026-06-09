@@ -35,6 +35,7 @@ const _canAccessExpense = exp => {
   const user = getCurrentUser();
   if (!user?.email) return false;
   if (state.role === 'GERENTE') {
+    if (exp.email === user.email.toLowerCase()) return true;
     const empresaScope = _getManagerCompanyScope();
     return !empresaScope || exp.empresa === empresaScope;
   }
