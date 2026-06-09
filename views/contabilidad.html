@@ -65,6 +65,9 @@
         <option value="PAGADO">Pagados</option>
         <option value="ANULADO_PAGO">Anulados</option>
       </select>
+      <select id="conta-filter-rendidor" class="select-filter" onchange="filterConta()">
+        <option value="">Todos los rendidores</option>
+      </select>
       <div style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151">
         <label style="font-size:13px;font-weight:400;margin:0">Desde</label>
         <input id="conta-filter-desde" type="date" class="select-filter" onchange="filterConta()">
@@ -75,8 +78,8 @@
 
     <div class="conta-payment-panel">
       <div>
-        <div class="conta-payment-title">Lote de pago</div>
-        <div id="conta-payment-summary" class="conta-payment-summary">Selecciona documentos pendientes del mismo rendidor para generar el comprobante de pago.</div>
+        <div class="conta-payment-title">Generar comprobante de pago</div>
+        <div id="conta-payment-summary" class="conta-payment-summary">Selecciona rendiciones autorizadas del mismo rendidor para generar el comprobante.</div>
       </div>
       <div class="conta-payment-fields">
         <div class="conta-payment-field">
@@ -94,7 +97,8 @@
       </div>
       <div class="conta-payment-actions">
         <button class="btn-secondary" type="button" onclick="clearContaSelection()">Limpiar selección</button>
-        <button class="btn-primary" type="button" onclick="preparePaymentBatch()">Preparar lote y guardar comprobante</button>
+        <button class="btn-secondary" type="button" onclick="selectAllContaFiltered()">Seleccionar todos</button>
+        <button class="btn-primary" type="button" onclick="preparePaymentBatch()">Generar comprobante de pago</button>
       </div>
     </div>
 
@@ -139,7 +143,7 @@
             <th>Fecha pago</th>
             <th>Total</th>
             <th>Referencia</th>
-            <th>Documentos</th>
+            <th>Docs / Folios</th>
             <th>Comprobante</th>
             <th>Acciones</th>
           </tr>

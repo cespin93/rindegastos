@@ -17,6 +17,8 @@ const state = {
 const $ = id => document.getElementById(id);
 const _isAdmin = () => state.role === 'ADMIN' || state.role === 'SUPERADMIN';
 const _getCurrentUserKey = () => ((getCurrentUser()?.email || '').toLowerCase().split('@')[0] || '');
+const _canChooseAnyExpenseCompany = () => _isAdmin() || _getCurrentUserKey() === 'mmoreno';
+const _isExpenseCompanyLocked = () => !_canChooseAnyExpenseCompany() && !!state.empresaUsuario;
 const _getManagerCompanyScope = () => {
   if (state.role !== 'GERENTE') return '';
   const userKey = _getCurrentUserKey();
@@ -36,6 +38,9 @@ const _canAccessExpense = exp => {
     const empresaScope = _getManagerCompanyScope();
     return !empresaScope || exp.empresa === empresaScope;
   }
+  if (state.role === 'APROBADOR' && exp.approverEmail === user.email.toLowerCase()) {
+    return true;
+  }
   return exp.email === user.email.toLowerCase();
 };
 const _getUserName = email => {
@@ -52,6 +57,26 @@ function toast(msg, type = 'success') {
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 3500);
+}
+
+function toastLink(msg, linkText, url, type = 'success') {
+  const colors = { success: '#16a34a', error: '#dc2626', info: '#2563eb' };
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;bottom:20px;right:20px;background:${colors[type]||colors.success};
+    color:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.25);
+    z-index:9999;font-size:14px;font-weight:500;max-width:380px;line-height:1.6;`;
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+    <div>${_escapeHtml(msg)}<br>
+      <a href="${_escapeHtml(url)}" target="_blank" rel="noopener"
+        style="color:#fff;text-decoration:underline;font-size:13px;font-weight:700"
+        onclick="this.closest('div[style]').remove()">${_escapeHtml(linkText)} ↗</a>
+    </div>
+    <button onclick="this.closest('div[style]').remove()"
+      style="background:rgba(255,255,255,.25);border:none;color:#fff;border-radius:6px;
+             padding:2px 8px;cursor:pointer;font-size:16px;flex-shrink:0;line-height:1.4">✕</button>
+  </div>`;
+  document.body.appendChild(el);
+  setTimeout(() => el?.isConnected && el.remove(), 20000);
 }
 
 function blockingAlert(msg) {
@@ -312,30 +337,6 @@ function _getBackendDeploymentId() {
   return match ? match[1] : 'desconocido';
 }
 
-function _setBackendStatus(message, kind = 'pending') {
-  ['backend-status', 'app-backend-status', 'app-backend-status-floating'].forEach(id => {
-    const el = $(id);
-    if (!el) return;
-    const extraClass = id === 'app-backend-status'
-      ? ' sidebar-backend-status'
-      : (id === 'app-backend-status-floating' ? ' app-backend-status-floating' : '');
-    el.className = `backend-status backend-status-${kind}` + extraClass;
-    el.textContent = message;
-  });
-}
-
-async function _refreshBackendStatus() {
-  const deploymentId = _getBackendDeploymentId();
-  _setBackendStatus(`Backend: comprobando deployment ${deploymentId}...`, 'pending');
-  try {
-    const res = await callBackend('healthcheck', {}, false);
-    const version = res.version || 'sin version';
-    _setBackendStatus(`Backend activo: ${version} | deployment ${deploymentId}`, 'ok');
-  } catch (e) {
-    _setBackendStatus(`Backend no verificado: ${e.message} | deployment ${deploymentId}`, 'error');
-  }
-}
-
 function badge(status) {
   const cls = {
     PENDIENTE:  'badge-yellow',
@@ -477,9 +478,48 @@ async function _loadCategories() {
   _fillSelect('form-category', state.categories.map(c => ({ val: c, label: c })), '— Categoría —');
 }
 
-async function _loadCostCenters() {
-  state.costCenters = await getCostCenters(state.empresaUsuario);
+function _fillExpenseCompanySelects(selectedCompany = '') {
+  const items = state.empresas.map(e => ({ val: e.nombre, label: e.nombre }));
+  if (selectedCompany && !items.some(i => i.val === selectedCompany)) {
+    items.unshift({ val: selectedCompany, label: selectedCompany });
+  }
+  const locked = _isExpenseCompanyLocked();
+  ['form-company', 'bulk-company'].forEach(id => {
+    _fillSelect(id, items, '— Seleccionar empresa —');
+    const sel = $(id);
+    if (!sel) return;
+    sel.value = selectedCompany || '';
+    sel.disabled = locked;
+  });
+}
+
+function _syncExpenseCompanySelects(company = '') {
+  ['form-company', 'bulk-company'].forEach(id => {
+    const sel = $(id);
+    if (sel) sel.value = company || '';
+  });
+}
+
+function _refreshBulkCostCenterOptions() {
+  const options = ['<option value="">— C. Costo —</option>']
+    .concat(state.costCenters.map(c => `<option value="${c}">${c}</option>`))
+    .join('');
+  document.querySelectorAll('#bulk-tbody .bulk-cost-center-select').forEach(sel => {
+    const prev = sel.value;
+    sel.innerHTML = options;
+    if (prev && state.costCenters.includes(prev)) sel.value = prev;
+  });
+}
+
+async function _loadCostCenters(company = state.empresaUsuario) {
+  state.costCenters = company ? await getCostCenters(company) : [];
+  const formCostCenter = $('form-cost-center');
+  const prevFormValue = formCostCenter?.value || '';
   _fillSelect('form-cost-center', state.costCenters.map(c => ({ val: c, label: c })), '— Centro de Costo —');
+  if (formCostCenter && prevFormValue && state.costCenters.includes(prevFormValue)) {
+    formCostCenter.value = prevFormValue;
+  }
+  _refreshBulkCostCenterOptions();
 }
 
 async function _loadEmpresas() {
@@ -508,6 +548,23 @@ function _fillSelect(id, items, placeholder) {
   if (!sel) return;
   sel.innerHTML = `<option value="">${placeholder}</option>` +
     items.map(i => `<option value="${i.val}">${i.label}</option>`).join('');
+}
+
+function _getSelectedExpenseCompany() {
+  return $('form-company')?.value || $('bulk-company')?.value || state.empresaUsuario || '';
+}
+
+async function handleExpenseCompanyChange(company) {
+  _syncExpenseCompanySelects(company || '');
+  await _loadCostCenters(company || '');
+}
+
+async function _setupExpenseCompanyFields() {
+  const selectedCompany = _isExpenseCompanyLocked()
+    ? (state.empresaUsuario || '')
+    : (_getSelectedExpenseCompany() || state.empresaUsuario || '');
+  _fillExpenseCompanySelects(selectedCompany);
+  await _loadCostCenters(selectedCompany);
 }
 
 function _mergeExpenses(list) {
@@ -1176,7 +1233,8 @@ async function navNewExpense() {
   if (batchNameInput) batchNameInput.value = '';
   _resetBulk();
   setExpenseMode('single');
-  await Promise.all([_loadCategories(), _loadCostCenters(), _loadUsers()]);
+  await Promise.all([_loadCategories(), _loadUsers(), _loadEmpresas()]);
+  await _setupExpenseCompanyFields();
   showView('view-new-expense');
 }
 
@@ -1358,7 +1416,7 @@ async function autoFillBulkRow(rowId) {
     // selects order: categoría(0), tipo doc(1)
 
     if (data.date)     inputs[1].value  = data.date;
-    if (data.total)    inputs[2].value  = Math.round(Number(data.total));
+    if (data.total)    setMoneyInputValue(inputs[2], Math.round(Number(data.total)));
     if (data.docNumber) inputs[3].value = data.docNumber;
     if (data.provider)  inputs[4].value = data.provider;
 
@@ -1394,7 +1452,7 @@ async function autoFillFromReceipt() {
     }
     if (data.docNumber) $('f-docnum').value   = data.docNumber;
     if (data.provider)  $('f-provider').value = data.provider;
-    if (data.total)     $('f-total').value    = Math.round(Number(data.total));
+    if (data.total)     setMoneyInputValue($('f-total'), Math.round(Number(data.total)));
     if (data.date)      $('f-date').value     = data.date;
 
     toast('Datos extraídos correctamente — revisa y ajusta si es necesario', 'success');
@@ -1451,11 +1509,21 @@ function _checkDuplicateFolio(provider, docNumber, excludeExpenses = []) {
 async function submitExpense(ev) {
   ev.preventDefault();
   const f = ev.target;
+  const empresa = (f.empresa.value || '').trim();
+  if (!empresa) {
+    toast('Selecciona una empresa', 'error');
+    return;
+  }
+  const total = parseMoney(f.total.value);
+  if (total <= 0) {
+    toast('Ingresa un monto valido mayor a cero', 'error');
+    return;
+  }
   const exp = {
     fechaGasto:    f.fechaGasto.value,
     title:         f.title.value.trim(),
     category:      f.category.value,
-    total:         parseMoney(f.total.value),
+    total,
     docType:       f.docType.value,
     docNumber:     f.docNumber.value.trim(),
     provider:      f.provider.value.trim(),
@@ -1481,7 +1549,7 @@ async function submitExpense(ev) {
   }
   loading(true);
   try {
-    await addExpense(exp, getCurrentUser().email, state.empresaUsuario);
+    await addExpense(exp, getCurrentUser().email, empresa);
     await addAudit('CREAR', getCurrentUser().email, { title: exp.title, total: exp.total });
     toast('Rendición registrada exitosamente', 'success');
     window._receipts = [];
@@ -1553,7 +1621,7 @@ function addBulkRow() {
       </select>
     </td>
     <td class="bulk-td">
-      <select class="input-field-sm">
+      <select class="input-field-sm bulk-cost-center-select">
         <option value="">— C. Costo —</option>
         ${_ccOptions()}
       </select>
@@ -1637,6 +1705,8 @@ async function submitBulk() {
   }
   const batchName = $('bulk-batch-name').value.trim();
   if (!batchName) { toast('Ingresa un nombre para el conjunto', 'error'); return; }
+  const empresa = ($('bulk-company')?.value || '').trim();
+  if (!empresa) { toast('Selecciona una empresa para el conjunto', 'error'); return; }
 
   const rows = Array.from($('bulk-tbody').querySelectorAll('tr.bulk-row'));
   if (!rows.length) { toast('Agrega al menos una fila', 'error'); return; }
@@ -1696,14 +1766,14 @@ async function submitBulk() {
   loading(true);
   try {
     for (const exp of expenses) {
-      await addExpense(exp, userEmail, state.empresaUsuario);
+      await addExpense(exp, userEmail, empresa);
     }
     await addAudit('CREAR_CONJUNTO', userEmail, { batchName, count: expenses.length });
     toast(`Conjunto "${batchName}" registrado con ${expenses.length} rendiciones`, 'success');
     _resetBulk();
     await navDashboard();
   } catch (e) {
-    blockingAlert(e.message || 'No se pudo registrar el conjunto de rendiciones.');
+    toast(e.message, 'error');
   } finally {
     loading(false);
   }
@@ -1828,7 +1898,6 @@ function _drawChart(id, type, labels, data, palette, horizontal = false) {
         borderColor:     type === 'line' ? palette[0] : colors,
         borderWidth:     type === 'line' ? 2 : 0,
         fill:            type === 'line',
-        tension:         0.4,
         pointRadius:     type === 'line' ? 4 : 0
       }]
     },
@@ -2237,11 +2306,12 @@ async function _loadAdminFondoFijo() {
         </td>
         <td class="td td-muted">${u.role}</td>
         <td class="td">
-          <input id="ff-input-${u.email.replace(/[@.]/g,'_')}"
-                 type="number" min="0" step="1000"
-                 value="${monto}"
+             <input id="ff-input-${u.email.replace(/[@.]/g,'_')}"
+               type="text"
+               value="${formatMoneyInputValue(monto)}"
                  placeholder="Sin fondo"
-                 class="input-field" style="width:160px;margin:0">
+               class="input-field" style="width:160px;margin:0"
+               inputmode="numeric" data-money-input="true" autocomplete="off">
         </td>
         <td class="td">
           <button onclick="saveFondoFijo('${u.email}')"
@@ -2251,6 +2321,7 @@ async function _loadAdminFondoFijo() {
         </td>
       </tr>`;
   }).join('');
+  bindMoneyInputs(tbody);
 }
 
 async function saveFondoFijo(email) {
@@ -2258,7 +2329,7 @@ async function saveFondoFijo(email) {
   if (!month) { toast('Selecciona un mes', 'error'); return; }
   const inputId = 'ff-input-' + email.replace(/[@.]/g, '_');
   const val     = $(inputId)?.value.trim();
-  const monto   = parseFloat(val);
+  const monto   = parseMoney(val);
   loading(true);
   try {
     if (!val || monto <= 0) {
@@ -2302,6 +2373,12 @@ async function navContabilidad() {
     catSel.innerHTML = '<option value="">Todas las categorías</option>' +
       cats.map(c => `<option>${c}</option>`).join('');
 
+    // Poblar filtro de rendidores
+    const rendEmails = [...new Set(_contaData.map(e => e.email).filter(Boolean))].sort();
+    const rendSel = $('conta-filter-rendidor');
+    rendSel.innerHTML = '<option value="">Todos los rendidores</option>' +
+      rendEmails.map(em => `<option value="${em}">${_getUserName(em)}</option>`).join('');
+
     if ($('conta-pay-date') && !$('conta-pay-date').value) {
       $('conta-pay-date').value = new Date().toISOString().split('T')[0];
     }
@@ -2312,22 +2389,24 @@ async function navContabilidad() {
 }
 
 function filterConta() {
-  const q     = $('conta-search').value.toLowerCase();
-  const tipo  = $('conta-filter-tipo').value;
-  const cat   = $('conta-filter-cat').value;
-  const pago  = $('conta-filter-pago').value;
-  const desde = $('conta-filter-desde').value;
-  const hasta = $('conta-filter-hasta').value;
+  const q        = $('conta-search').value.toLowerCase();
+  const tipo     = $('conta-filter-tipo').value;
+  const cat      = $('conta-filter-cat').value;
+  const pago     = $('conta-filter-pago').value;
+  const rendidor = $('conta-filter-rendidor').value;
+  const desde    = $('conta-filter-desde').value;
+  const hasta    = $('conta-filter-hasta').value;
 
   const all = state.expenses.filter(e => e.status === 'AUTORIZADO');
   const filtered = all.filter(e => {
     const paymentStatus = _getPaymentStatus(e);
     if (q && !`${e.docNumber} ${e.provider} ${e.title} ${e.category} ${e.email}`.toLowerCase().includes(q)) return false;
-    if (tipo && e.docType !== tipo)      return false;
-    if (cat  && e.category !== cat)     return false;
-    if (pago && paymentStatus !== pago) return false;
-    if (desde && e.fechaGasto < desde)  return false;
-    if (hasta && e.fechaGasto > hasta)  return false;
+    if (tipo     && e.docType !== tipo)          return false;
+    if (cat      && e.category !== cat)          return false;
+    if (pago     && paymentStatus !== pago)       return false;
+    if (rendidor && e.email !== rendidor)         return false;
+    if (desde    && e.fechaGasto < desde)         return false;
+    if (hasta    && e.fechaGasto > hasta)         return false;
     return true;
   });
   _renderConta(filtered);
@@ -2364,12 +2443,11 @@ function _renderConta(exps) {
     tbody.innerHTML = exps.map(e => `
       <tr class="table-row" onclick="openDetail(${e.rowIndex},'dashboard')">
         <td class="td" onclick="event.stopPropagation()">
-          <input
-            type="checkbox"
-            class="conta-check"
-            ${_contaSelection.has(e.rowIndex) ? 'checked' : ''}
-            ${_canSelectPaymentStatus(_getPaymentStatus(e)) ? '' : 'disabled'}
-            onchange="toggleContaSelection(${e.rowIndex})">
+          ${_canSelectPaymentStatus(_getPaymentStatus(e))
+            ? `<input type="checkbox" class="conta-check"
+                 ${_contaSelection.has(e.rowIndex) ? 'checked' : ''}
+                 onchange="toggleContaSelection(${e.rowIndex})">`
+            : '<span style="color:#d1d5db;font-size:11px;cursor:default" title="No disponible para pago">—</span>'}
         </td>
         <td class="td td-bold conta-folio">${e.docNumber || '—'}</td>
         <td class="td">${fmtDate(e.fechaGasto)}</td>
@@ -2439,7 +2517,9 @@ function _renderPaymentBatches() {
         <td class="td">${payment.paymentDate ? fmtDate(payment.paymentDate) : '—'}</td>
         <td class="td td-bold">${fmt(payment.totalAmount)}</td>
         <td class="td">${_escapeHtml(payment.paymentRef || '—')}</td>
-        <td class="td">${payment.documentCount}</td>
+        <td class="td" title="${_escapeHtml(payment.folios || '')}" style="font-size:11px;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default">
+          <strong>${payment.documentCount}</strong>${payment.folios ? ` · ${_escapeHtml(payment.folios)}` : ''}
+        </td>
         <td class="td">${payment.packetUrl ? `<a class="conta-batch-link" href="${payment.packetUrl}" target="_blank" rel="noopener">Abrir PDF</a>` : '—'}</td>
         <td class="td">
           <div class="conta-batch-actions">
@@ -2458,12 +2538,12 @@ function _renderContaSelectionSummary() {
 
   const selected = _getSelectedContaExpenses();
   if (!selected.length) {
-    summaryEl.textContent = 'Selecciona documentos pendientes del mismo rendidor para generar el comprobante de pago.';
+    summaryEl.textContent = 'Selecciona rendiciones autorizadas del mismo rendidor para generar el comprobante.';
     return;
   }
 
   const total = selected.reduce((sum, exp) => sum + exp.total, 0);
-  summaryEl.textContent = `${selected.length} documento${selected.length === 1 ? '' : 's'} seleccionado${selected.length === 1 ? '' : 's'} · Rendidor: ${_getUserName(selected[0].email)} · Total a pagar: ${fmt(total)}`;
+  summaryEl.textContent = `${selected.length} rendición${selected.length === 1 ? '' : 'es'} seleccionada${selected.length === 1 ? '' : 's'} · Rendidor: ${_getUserName(selected[0].email)} · Total a transferir: ${fmt(total)}`;
 }
 
 function clearContaSelection() {
@@ -2471,13 +2551,24 @@ function clearContaSelection() {
   _renderConta(_contaFiltered);
 }
 
+function selectAllContaFiltered() {
+  const selectable = _contaFiltered.filter(e => _canSelectPaymentStatus(_getPaymentStatus(e)));
+  if (!selectable.length) {
+    toast('No hay rendiciones disponibles para seleccionar en la vista actual.', 'info');
+    return;
+  }
+  const emails = [...new Set(selectable.map(e => e.email))];
+  if (emails.length > 1) {
+    toast('Filtra por un rendidor específico antes de usar "Seleccionar todos".', 'error');
+    return;
+  }
+  selectable.forEach(e => _contaSelection.add(e.rowIndex));
+  _renderConta(_contaFiltered);
+}
+
 function toggleContaSelection(rowIndex) {
   const exp = state.expenses.find(item => item.rowIndex === rowIndex);
   if (!exp || exp.status !== 'AUTORIZADO') return;
-  if (!_canSelectPaymentStatus(_getPaymentStatus(exp))) {
-    toast('Ese documento no está disponible para un nuevo lote de pago.', 'info');
-    return;
-  }
 
   if (_contaSelection.has(rowIndex)) {
     _contaSelection.delete(rowIndex);
@@ -2487,7 +2578,7 @@ function toggleContaSelection(rowIndex) {
 
   const selected = _getSelectedContaExpenses();
   if (selected.length && selected[0].email !== exp.email) {
-    toast('El lote de pago debe corresponder a un solo rendidor.', 'error');
+    toast('El comprobante debe corresponder a un solo rendidor.', 'error');
     return;
   }
 
@@ -2495,10 +2586,45 @@ function toggleContaSelection(rowIndex) {
   _renderConta(_contaFiltered);
 }
 
+function _loadPdfJs() {
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = () => reject(new Error('No se pudo cargar PDF.js'));
+    document.head.appendChild(s);
+  });
+}
+
+async function _pdfToImages(base64data, scale = 2) {
+  const lib = await _loadPdfJs();
+  const raw = atob(base64data);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+
+  const pdf = await lib.getDocument({ data: bytes }).promise;
+  const images = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page     = await pdf.getPage(p);
+    const viewport = page.getViewport({ scale });
+    const canvas   = document.createElement('canvas');
+    canvas.width   = viewport.width;
+    canvas.height  = viewport.height;
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    images.push(canvas.toDataURL('image/jpeg', 0.88));
+  }
+  return images;
+}
+
 async function _buildPaymentPrintSnapshot(expenses) {
   const snapshot = [];
   for (const exp of expenses) {
-    const cloned = { ...exp, receipts: [] };
+    const cloned   = { ...exp, receipts: [] };
     const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
     for (const receipt of receipts) {
       const clonedReceipt = { ...receipt };
@@ -2506,8 +2632,17 @@ async function _buildPaymentPrintSnapshot(expenses) {
         try {
           const content = await getReceiptContent(receipt.id);
           if (content?.data && content?.mime) {
-            clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
-            clonedReceipt.mime = content.mime;
+            if (content.mime.includes('pdf')) {
+              try {
+                clonedReceipt.pdfImages = await _pdfToImages(content.data);
+              } catch {
+                clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
+              }
+              clonedReceipt.mime = content.mime;
+            } else {
+              clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
+              clonedReceipt.mime = content.mime;
+            }
           }
         } catch (err) {
           clonedReceipt.loadError = err.message;
@@ -2522,188 +2657,335 @@ async function _buildPaymentPrintSnapshot(expenses) {
 
 function _buildPaymentAttachments(expenses) {
   const sections = [];
-  expenses.forEach((exp, expenseIndex) => {
+  let totalReceipts = 0;
+  expenses.forEach(exp => {
+    const r = Array.isArray(exp.receipts) ? exp.receipts : [];
+    totalReceipts += r.length || 1;
+  });
+  let idx = 1;
+
+  expenses.forEach((exp, expIdx) => {
     const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
+    const docRef   = `${_escapeHtml(exp.docType || 'DOC')} ${_escapeHtml(exp.docNumber || 'S/F')}`;
+    const provRef  = `${_escapeHtml(exp.provider || 'Sin proveedor')} · ${fmt(exp.total)}`;
+
+    const _header = (label) => `
+      <div style="flex-shrink:0;display:flex;justify-content:space-between;align-items:center;
+                  background:#1e3a8a;color:#fff;padding:8px 18px;">
+        <div>
+          <span style="font-size:9px;opacity:.7;text-transform:uppercase;letter-spacing:.07em">
+            Respaldo ${label}
+          </span>
+          <div style="font-size:13px;font-weight:800;margin-top:1px">${docRef} · ${provRef}</div>
+        </div>
+        <div style="text-align:right;font-size:10px;opacity:.8">
+          ${_escapeHtml(exp.title)}<br>${fmtDate(exp.fechaGasto)}
+        </div>
+      </div>`;
+
     if (!receipts.length) {
       sections.push(`
-        <section class="payment-doc-attachment" style="page-break-after:always;padding:24px 30px;font-family:Arial,sans-serif;color:#111827">
-          <div style="font-size:18px;font-weight:800;margin-bottom:8px">Respaldo ${expenseIndex + 1}</div>
-          <div style="font-size:13px;color:#4b5563">${_escapeHtml(exp.docType)} ${_escapeHtml(exp.docNumber || 'Sin folio')} · ${_escapeHtml(exp.title || 'Sin concepto')}</div>
-          <p style="margin-top:20px">No hay adjuntos disponibles para este documento.</p>
-        </section>`);
+        <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
+                    font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
+          ${_header(`${idx} de ${totalReceipts}`)}
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;
+                      background:#f8fafc;flex-direction:column;gap:8px;color:#9ca3af">
+            <div style="font-size:36px">📄</div>
+            <div style="font-size:13px;font-weight:600">Sin archivos adjuntos</div>
+            <div style="font-size:11px">Este documento no tiene comprobantes digitales adjuntos</div>
+          </div>
+        </div>`);
+      idx++;
       return;
     }
 
-    receipts.forEach((receipt, receiptIndex) => {
-      const title = `Respaldo ${expenseIndex + 1}.${receiptIndex + 1}`;
-      const source = receipt.inlineUrl || receipt.url || '';
-      const mime = String(receipt.mime || '');
-      let body = '<p>Adjunto sin URL disponible.</p>';
+    receipts.forEach((receipt, rIdx) => {
+      const baseLabel = receipts.length > 1 ? `(${rIdx + 1}/${receipts.length})` : '';
+      const source    = receipt.inlineUrl || receipt.url || '';
+      const mime      = String(receipt.mime || '');
+      const fname     = receipt.name || '—';
+
+      // ── PDF convertido a imágenes (una página = una hoja) ──
+      if (receipt.pdfImages && receipt.pdfImages.length > 0) {
+        receipt.pdfImages.forEach((imgSrc, pageIdx) => {
+          const pageTag  = receipt.pdfImages.length > 1
+            ? ` · Pág. ${pageIdx + 1}/${receipt.pdfImages.length}` : '';
+          const fullLabel = `${idx} de ${totalReceipts}${baseLabel}${pageTag}`;
+          sections.push(`
+            <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
+                        font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
+              ${_header(fullLabel)}
+              <div style="flex:1;overflow:hidden;background:#fff;display:flex;
+                          align-items:center;justify-content:center">
+                <img src="${imgSrc}" alt="${_escapeHtml(fname)}"
+                     style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+              </div>
+            </div>`);
+        });
+        idx++;
+        return;
+      }
+
+      // ── Resto de casos ──
+      const label = `${idx} de ${totalReceipts}${baseLabel ? ' ' + baseLabel : ''}`;
+      let body;
+
       if (receipt.loadError) {
-        body = `<p>No se pudo cargar el adjunto: ${_escapeHtml(receipt.loadError)}</p>`;
-      } else if (source && mime.startsWith('image/')) {
-        body = `<img src="${source}" alt="${_escapeHtml(receipt.name || title)}" style="max-width:100%;max-height:980px;display:block;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px">`;
-      } else if (source && mime.includes('pdf')) {
         body = `
-          <div style="border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;height:980px;background:#fff">
-            <iframe src="${source}#toolbar=0&navpanes=0&scrollbar=0" title="${_escapeHtml(receipt.name || title)}" style="width:100%;height:100%;border:none"></iframe>
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:10px;padding:32px;text-align:center">
+            <div style="font-size:32px">⚠️</div>
+            <div style="font-size:14px;font-weight:700;color:#dc2626">No se pudo cargar el adjunto</div>
+            <div style="font-size:12px;color:#6b7280;max-width:400px">${_escapeHtml(receipt.loadError)}</div>
+            ${receipt.url ? `<a href="${_escapeHtml(receipt.url)}" target="_blank"
+              style="margin-top:8px;background:#1e40af;color:#fff;padding:8px 20px;
+                     border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
+              Abrir en Drive ↗</a>` : ''}
+          </div>`;
+      } else if (source && mime.startsWith('image/')) {
+        body = `
+          <div style="flex:1;display:flex;align-items:center;justify-content:center;
+                      background:#fff;overflow:hidden">
+            <img src="${source}" alt="${_escapeHtml(fname)}"
+                 style="max-width:100%;max-height:100%;object-fit:contain;display:block">
+          </div>`;
+      } else if (mime.includes('pdf') || fname.toLowerCase().endsWith('.pdf')) {
+        const driveUrl = receipt.url || source;
+        body = `
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:12px;padding:40px;text-align:center;background:#f0f4ff;flex:1">
+            <div style="font-size:56px">📑</div>
+            <div style="font-size:16px;font-weight:800;color:#1e3a8a">${_escapeHtml(fname)}</div>
+            <div style="font-size:12px;color:#6b7280">
+              ${_escapeHtml(exp.docType || '')} ${_escapeHtml(exp.docNumber || '')} · ${_escapeHtml(exp.provider || '')}
+            </div>
+            ${driveUrl ? `<a href="${_escapeHtml(driveUrl)}" target="_blank"
+              style="background:#1e3a8a;color:#fff;padding:10px 28px;border-radius:10px;
+                     text-decoration:none;font-size:13px;font-weight:700;margin-top:4px">
+              Abrir PDF en Drive ↗</a>` : ''}
           </div>`;
       } else if (source) {
-        body = `<p><a href="${source}" target="_blank" rel="noopener">Abrir adjunto ${_escapeHtml(receipt.name || title)}</a></p>`;
+        body = `
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:10px;padding:32px;flex:1">
+            <div style="font-size:36px">📎</div>
+            <div style="font-size:13px;font-weight:700">${_escapeHtml(fname)}</div>
+            <a href="${_escapeHtml(source)}" target="_blank"
+               style="background:#1e40af;color:#fff;padding:8px 20px;border-radius:8px;
+                      text-decoration:none;font-size:12px;font-weight:700">Abrir archivo ↗</a>
+          </div>`;
+      } else {
+        body = `
+          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
+                      gap:8px;padding:32px;color:#9ca3af;flex:1">
+            <div style="font-size:32px">🔗</div>
+            <div style="font-size:12px">Adjunto sin URL disponible</div>
+          </div>`;
       }
 
       sections.push(`
-        <section class="payment-doc-attachment" style="page-break-after:always;padding:24px 30px;font-family:Arial,sans-serif;color:#111827">
-          <div style="font-size:18px;font-weight:800;margin-bottom:8px">${title}</div>
-          <div style="font-size:13px;color:#4b5563;margin-bottom:18px">${_escapeHtml(exp.docType)} ${_escapeHtml(exp.docNumber || 'Sin folio')} · ${_escapeHtml(exp.provider || 'Sin proveedor')} · ${fmt(exp.total)}</div>
-          ${body}
-        </section>`);
+        <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
+                    font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
+          ${_header(label)}
+          <div style="flex:1;overflow:hidden;display:flex;flex-direction:column;background:#fff">
+            ${body}
+          </div>
+        </div>`);
+      idx++;
     });
   });
   return sections.join('');
 }
 
 function _buildPaymentPacketHtml(payload, options = {}) {
-  const payment = payload || {};
+  const payment  = payload || {};
   const expenses = Array.isArray(payment.expenses) ? payment.expenses : [];
   if (!expenses.length) return '';
-  const autoPrint = !!options.autoPrint;
 
-  const ownerName = _getUserName(expenses[0].email);
-  const ownerEmail = expenses[0].email || '—';
-  const total = expenses.reduce((sum, exp) => sum + exp.total, 0);
-  const rows = expenses.map((exp, idx) => `
+  const ownerEmail = expenses[0].email || '';
+  const ownerName  = _getUserName(ownerEmail) || ownerEmail;
+  const empresa    = expenses[0].empresa || '—';
+  const total      = expenses.reduce((sum, exp) => sum + exp.total, 0);
+  const emitDate   = fmtDate(new Date().toISOString().split('T')[0]);
+
+  const rows = expenses.map((exp, i) => `
     <tr>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${idx + 1}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${fmtDate(exp.fechaGasto)}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docType || '—')}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.docNumber || '—')}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.provider || '—')}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb">${_escapeHtml(exp.title || '—')}</td>
-      <td style="padding:10px 8px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700">${fmt(exp.total)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;text-align:center;color:#64748b">${i + 1}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;white-space:nowrap">${fmtDate(exp.fechaGasto)}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0">
+        <span style="background:#dbeafe;color:#1e40af;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:700">
+          ${_escapeHtml(exp.docType || '—')}
+        </span>
+      </td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#1e3a8a">${_escapeHtml(exp.docNumber || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0">${_escapeHtml(exp.provider || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;color:#64748b">${_escapeHtml(exp.category || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0">${_escapeHtml(exp.title || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:10px">${_escapeHtml(_getUserName(exp.approverEmail) || exp.approverEmail || '—')}</td>
+      <td style="padding:8px 6px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:800;color:#111827">${fmt(exp.total)}</td>
     </tr>`).join('');
 
   const attachments = _buildPaymentAttachments(expenses);
+
   return `<!DOCTYPE html>
-  <html lang="es">
-  <head>
-    <meta charset="utf-8">
-    <title>Comprobante ${_escapeHtml(payment.paymentBatchId || '')}</title>
-    <style>
-      body { margin: 0; background: #f3f4f6; }
-      .sheet { max-width: 1080px; margin: 0 auto; background: #fff; }
-      .cover { page-break-after: always; padding: 30px 34px; font-family: Arial, sans-serif; color: #111827; }
-      .head { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin-bottom:24px; }
-      .chip { display:inline-block; padding:6px 10px; background:#dbeafe; color:#1d4ed8; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.04em; }
-      h1 { margin:10px 0 6px; font-size:28px; }
-      .meta { font-size:13px; color:#4b5563; line-height:1.6; }
-      .total-box { min-width:240px; border-radius:16px; background:#111827; color:#fff; padding:18px 20px; }
-      .total-box strong { display:block; font-size:13px; color:#d1d5db; margin-bottom:6px; }
-      .total-box span { font-size:30px; font-weight:800; }
-      .section { margin-top:24px; }
-      .section h2 { margin:0 0 10px; font-size:15px; text-transform:uppercase; letter-spacing:.06em; color:#374151; }
-      .box { border:1px solid #e5e7eb; border-radius:14px; padding:16px 18px; background:#fafafa; }
-      .grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
-      .label { font-size:12px; color:#6b7280; margin-bottom:4px; }
-      .value { font-size:14px; font-weight:700; color:#111827; }
-      table { width:100%; border-collapse:collapse; font-size:13px; }
-      thead th { padding:10px 8px; text-align:left; background:#f3f4f6; border-bottom:1px solid #d1d5db; }
-      .signatures { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:22px; }
-      .sign { border:1px solid #e5e7eb; border-radius:14px; min-height:110px; padding:14px 16px; }
-      .sign strong { display:block; font-size:12px; text-transform:uppercase; color:#6b7280; margin-bottom:32px; }
-      @media print {
-        body { background:#fff; }
-        .sheet { max-width:none; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="sheet">
-      <section class="cover">
-        <div class="head">
-          <div>
-            <div class="chip">COMPROBANTE DE PAGO</div>
-            <h1>Desglose de documentos pagados</h1>
-            <div class="meta">
-              <div><strong>Lote:</strong> ${_escapeHtml(payment.paymentBatchId || '—')}</div>
-              <div><strong>Fecha de pago:</strong> ${fmtDate(payment.paymentDate || '')}</div>
-              <div><strong>Referencia:</strong> ${_escapeHtml(payment.paymentRef || '—')}</div>
-              <div><strong>Procesado por:</strong> ${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
-            </div>
-          </div>
-          <div class="total-box">
-            <strong>Total pagado</strong>
-            <span>${fmt(total)}</span>
-          </div>
-        </div>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Comprobante ${_escapeHtml(payment.paymentBatchId || '')}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:12px;background:#fff}
+    table{width:100%;border-collapse:collapse;font-size:11px}
+    @media print{body{background:#fff}}
+  </style>
+</head>
+<body>
 
-        <div class="section">
-          <h2>Rendidor</h2>
-          <div class="box grid">
-            <div><div class="label">Nombre</div><div class="value">${_escapeHtml(ownerName)}</div></div>
-            <div><div class="label">Email</div><div class="value">${_escapeHtml(ownerEmail)}</div></div>
-            <div><div class="label">Empresa</div><div class="value">${_escapeHtml(expenses[0].empresa || '—')}</div></div>
-            <div><div class="label">Cantidad documentos</div><div class="value">${expenses.length}</div></div>
-          </div>
-        </div>
+<!-- ── PÁGINA 1: DESGLOSE ── -->
+<div style="page-break-after:always;font-family:Arial,Helvetica,sans-serif">
 
-        <div class="section">
-          <h2>Detalle</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Fecha</th>
-                <th>Tipo</th>
-                <th>Folio</th>
-                <th>Proveedor</th>
-                <th>Concepto</th>
-                <th style="text-align:right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows}
-              <tr>
-                <td colspan="6" style="padding:12px 8px;text-align:right;font-weight:800;border-top:2px solid #111827">Total a pagar</td>
-                <td style="padding:12px 8px;text-align:right;font-size:16px;font-weight:800;border-top:2px solid #111827">${fmt(total)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="section">
-          <h2>Observaciones</h2>
-          <div class="box">${_escapeHtml(payment.paymentNotes || 'Sin observaciones')}</div>
-        </div>
-
-        <div class="signatures">
-          <div class="sign">
-            <strong>Recibe conforme</strong>
-            ${_escapeHtml(ownerName)}
-          </div>
-          <div class="sign">
-            <strong>Procesa pago</strong>
-            ${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}
-          </div>
-        </div>
-      </section>
-      ${attachments}
+  <!-- Cabecera azul oscuro -->
+  <div style="background:#1e3a8a;color:#fff;padding:20px 28px;display:flex;justify-content:space-between;align-items:center">
+    <div>
+      <div style="font-size:10px;opacity:.65;text-transform:uppercase;letter-spacing:.1em;margin-bottom:4px">
+        Rindegastos · ${_escapeHtml(empresa)}
+      </div>
+      <div style="font-size:22px;font-weight:800;letter-spacing:-.3px">Comprobante de Pago</div>
+      <div style="font-size:11px;opacity:.75;margin-top:3px">
+        Emitido el ${emitDate} &nbsp;·&nbsp; Lote: <strong>${_escapeHtml(payment.paymentBatchId || '—')}</strong>
+      </div>
     </div>
-    ${autoPrint ? `<script>
-      window.addEventListener('load', function () {
-        setTimeout(function () { window.print(); }, 400);
-      });
-    <\/script>` : ''}
-  </body>
-  </html>`;
-}
+    <!-- Total destacado -->
+    <div style="text-align:right">
+      <div style="font-size:10px;opacity:.65;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Total a transferir</div>
+      <div style="font-size:32px;font-weight:800;letter-spacing:-.5px">${fmt(total)}</div>
+      <div style="font-size:10px;opacity:.65;margin-top:2px">${expenses.length} documento${expenses.length === 1 ? '' : 's'} autorizado${expenses.length === 1 ? '' : 's'}</div>
+    </div>
+  </div>
 
-function printPaymentPacket(printWindow, payload) {
-  const html = _buildPaymentPacketHtml(payload, { autoPrint: true });
-  if (!printWindow || printWindow.closed || !html) return;
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
+  <!-- Franja acento -->
+  <div style="height:4px;background:linear-gradient(90deg,#3b82f6,#06b6d4)"></div>
+
+  <!-- Cuerpo principal -->
+  <div style="padding:20px 28px">
+
+    <!-- Dos columnas: rendidor + datos pago -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
+
+      <!-- Card rendidor -->
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div style="background:#f1f5f9;padding:8px 14px;font-size:10px;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.07em;color:#475569;
+                    border-bottom:1px solid #e2e8f0">
+          Datos del rendidor
+        </div>
+        <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Nombre</div>
+            <div style="font-size:13px;font-weight:800;color:#1e3a8a">${_escapeHtml(ownerName)}</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Empresa</div>
+            <div style="font-size:12px;font-weight:700">${_escapeHtml(empresa)}</div>
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Correo</div>
+            <div style="font-size:11px;color:#475569">${_escapeHtml(ownerEmail)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card datos del pago -->
+      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
+        <div style="background:#f1f5f9;padding:8px 14px;font-size:10px;font-weight:700;
+                    text-transform:uppercase;letter-spacing:.07em;color:#475569;
+                    border-bottom:1px solid #e2e8f0">
+          Datos del pago
+        </div>
+        <div style="padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Fecha transferencia</div>
+            <div style="font-size:12px;font-weight:700">${fmtDate(payment.paymentDate || '')}</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Procesado por</div>
+            <div style="font-size:12px;font-weight:700">${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+          </div>
+          <div style="grid-column:1/-1">
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Referencia / N° Transferencia</div>
+            <div style="font-size:12px;font-weight:800;color:#1e3a8a">${_escapeHtml(payment.paymentRef || '—')}</div>
+          </div>
+          ${payment.paymentNotes ? `
+          <div style="grid-column:1/-1">
+            <div style="font-size:9px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px">Observaciones</div>
+            <div style="font-size:11px;color:#475569">${_escapeHtml(payment.paymentNotes)}</div>
+          </div>` : ''}
+        </div>
+      </div>
+    </div>
+
+    <!-- Tabla desglose -->
+    <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:18px">
+      <div style="background:#f1f5f9;padding:8px 14px;font-size:10px;font-weight:700;
+                  text-transform:uppercase;letter-spacing:.07em;color:#475569;
+                  border-bottom:1px solid #e2e8f0">
+        Desglose de rendiciones autorizadas
+      </div>
+      <table>
+        <thead>
+          <tr style="background:#1e3a8a;color:#fff">
+            <th style="padding:8px 6px;text-align:center;width:22px;font-size:10px">#</th>
+            <th style="padding:8px 6px;width:66px;font-size:10px">Fecha</th>
+            <th style="padding:8px 6px;width:52px;font-size:10px">Tipo</th>
+            <th style="padding:8px 6px;width:72px;font-size:10px">N° Folio</th>
+            <th style="padding:8px 6px;font-size:10px">Proveedor</th>
+            <th style="padding:8px 6px;font-size:10px">Categoría</th>
+            <th style="padding:8px 6px;font-size:10px">Concepto</th>
+            <th style="padding:8px 6px;width:84px;font-size:10px">Autorizado por</th>
+            <th style="padding:8px 6px;width:74px;text-align:right;font-size:10px">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+          <!-- Fila total -->
+          <tr style="background:#1e3a8a;color:#fff">
+            <td colspan="8" style="padding:10px 6px;text-align:right;font-weight:700;font-size:12px;
+                                   text-transform:uppercase;letter-spacing:.04em">
+              Total a transferir
+            </td>
+            <td style="padding:10px 6px;text-align:right;font-weight:800;font-size:15px">
+              ${fmt(total)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Firmas -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;min-height:88px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+                    color:#94a3b8;margin-bottom:8px">Recibe conforme · Rendidor</div>
+        <div style="font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:28px">${_escapeHtml(ownerName)}</div>
+        <div style="border-bottom:1px solid #cbd5e1"></div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:5px">${_escapeHtml(ownerEmail)}</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;min-height:88px">
+        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;
+                    color:#94a3b8;margin-bottom:8px">Autoriza transferencia</div>
+        <div style="font-size:13px;font-weight:800;color:#1e3a8a;margin-bottom:28px">${_escapeHtml(payment.paymentByName || payment.paymentBy || '—')}</div>
+        <div style="border-bottom:1px solid #cbd5e1"></div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:5px">${_escapeHtml(payment.paymentBy || '')}</div>
+      </div>
+    </div>
+
+  </div><!-- /cuerpo -->
+</div><!-- /página 1 -->
+
+${attachments}
+
+</body>
+</html>`;
 }
 
 async function _persistPaymentStatus(expenses, payload) {
@@ -2733,12 +3015,6 @@ async function preparePaymentBatch() {
     return;
   }
 
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  if (!printWindow) {
-    toast('El navegador bloqueó la ventana de impresión. Habilita popups e inténtalo nuevamente.', 'error');
-    return;
-  }
-
   const currentUser = getCurrentUser() || {};
   const paymentBatchId = _buildPaymentBatchId();
   const paymentBy = (currentUser.email || '').toLowerCase();
@@ -2758,6 +3034,7 @@ async function preparePaymentBatch() {
     const html = _buildPaymentPacketHtml(paymentPayload, { autoPrint: false });
     const savedPacket = await savePaymentPacket(paymentBatchId, html);
     const rowIndexes = selected.map(exp => exp.rowIndex);
+    const totalAmount = selected.reduce((sum, exp) => sum + exp.total, 0);
     const record = {
       paymentBatchId,
       createdAt: new Date().toISOString(),
@@ -2766,7 +3043,7 @@ async function preparePaymentBatch() {
       payeeEmail: selected[0].email,
       payeeName: _getUserName(selected[0].email),
       documentCount: selected.length,
-      totalAmount: selected.reduce((sum, exp) => sum + exp.total, 0),
+      totalAmount,
       paymentRef,
       paymentNotes,
       processedBy: paymentBy,
@@ -2777,24 +3054,37 @@ async function preparePaymentBatch() {
       packetMime: savedPacket.mime || 'application/pdf'
     };
     await addPaymentRecord(record);
-    await _persistPaymentStatus(selected, {
-      paymentStatus: 'EN_PREPARACION_PAGO',
-      paymentBatchId,
-      paymentDate,
-      paymentRef,
-      paymentBy,
-      paymentNotes
+    const toUpdateStatus = selected.filter(exp => {
+      const ps = _getPaymentStatus(exp);
+      return ps !== 'PAGADO' && ps !== 'EN_PREPARACION_PAGO';
     });
-    await addAudit('PAGO_PREPARADO', paymentBy, { paymentBatchId, rows: rowIndexes, totalAmount: record.totalAmount, paymentRef });
+    if (toUpdateStatus.length) {
+      await _persistPaymentStatus(toUpdateStatus, {
+        paymentStatus: 'EN_PREPARACION_PAGO',
+        paymentBatchId,
+        paymentDate,
+        paymentRef,
+        paymentBy,
+        paymentNotes
+      });
+    }
+    await addAudit('COMPROBANTE_GENERADO', paymentBy, { paymentBatchId, rows: rowIndexes, totalAmount, paymentRef });
     state.payments = await getPayments();
 
     clearContaSelection();
     filterConta();
     _renderPaymentBatches();
-    toast(`${selected.length} documento${selected.length === 1 ? '' : 's'} enviado${selected.length === 1 ? '' : 's'} a preparación de pago.`, 'success');
-    printPaymentPacket(printWindow, paymentPayload);
+
+    if (savedPacket.url) {
+      toastLink(
+        `Comprobante generado · ${_getUserName(selected[0].email)} · ${selected.length} doc${selected.length === 1 ? '' : 's'} · ${fmt(totalAmount)}`,
+        'Abrir comprobante PDF',
+        savedPacket.url
+      );
+    } else {
+      toast(`Comprobante guardado · ${_getUserName(selected[0].email)} · ${fmt(totalAmount)}`, 'success');
+    }
   } catch (e) {
-    if (!printWindow.closed) printWindow.close();
     toast(e.message, 'error');
   } finally {
     loading(false);
@@ -2882,18 +3172,14 @@ async function reprintPaymentBatch(paymentRowIndex) {
     return;
   }
   if (payment.packetUrl) {
-    window.open(payment.packetUrl, '_blank', 'noopener,noreferrer');
+    toastLink('Comprobante listo', 'Abrir comprobante PDF', payment.packetUrl);
     return;
   }
 
-  const printWindow = window.open('', '_blank', 'noopener,noreferrer');
-  if (!printWindow) {
-    toast('El navegador bloqueó la ventana de impresión.', 'error');
-    return;
-  }
+  loading(true);
   try {
     const expenses = await _buildPaymentPrintSnapshot(_getPaymentExpenses(payment));
-    printPaymentPacket(printWindow, {
+    const paymentPayload = {
       paymentBatchId: payment.paymentBatchId,
       paymentDate: payment.paymentDate,
       paymentRef: payment.paymentRef,
@@ -2901,10 +3187,18 @@ async function reprintPaymentBatch(paymentRowIndex) {
       paymentBy: payment.processedBy,
       paymentByName: _getUserName(payment.processedBy),
       expenses
-    });
+    };
+    const html = _buildPaymentPacketHtml(paymentPayload, { autoPrint: false });
+    const savedPacket = await savePaymentPacket(payment.paymentBatchId, html);
+    if (savedPacket.url) {
+      toastLink('Comprobante regenerado', 'Abrir comprobante PDF', savedPacket.url);
+    } else {
+      toast('Comprobante generado, revisa Google Drive.', 'success');
+    }
   } catch (e) {
-    if (!printWindow.closed) printWindow.close();
     toast(e.message, 'error');
+  } finally {
+    loading(false);
   }
 }
 
