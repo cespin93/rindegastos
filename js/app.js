@@ -1879,6 +1879,65 @@ function renderReportes() {
     exps.forEach(e => { const k = e.empresa || 'Sin empresa'; byEmp[k] = (byEmp[k] || 0) + e.total; });
     _drawChart('chart-empresas', 'bar', Object.keys(byEmp), Object.values(byEmp), palette);
   }
+
+  // ── Ranking y tabla por rendidor ──
+  const byRend = {};
+  exps.forEach(e => {
+    const key = e.email || 'desconocido';
+    if (!byRend[key]) byRend[key] = { name: _getUserName(e.email), total: 0, count: 0, pendiente: 0, aprobado: 0, autorizado: 0, rechazado: 0, pendientePago: 0, pagado: 0 };
+    byRend[key].total += e.total;
+    byRend[key].count++;
+    if (e.status === 'PENDIENTE')  byRend[key].pendiente++;
+    if (e.status === 'APROBADO')   byRend[key].aprobado++;
+    if (e.status === 'AUTORIZADO') byRend[key].autorizado++;
+    if (e.status === 'RECHAZADO')  byRend[key].rechazado++;
+    const ps = _getPaymentStatus(e);
+    if (ps === 'PENDIENTE_PAGO' || ps === 'EN_PREPARACION_PAGO') byRend[key].pendientePago++;
+    if (ps === 'PAGADO') byRend[key].pagado++;
+  });
+
+  const rendKeys = Object.keys(byRend).sort((a, b) => byRend[b].total - byRend[a].total);
+  const maxTotal = rendKeys.length ? byRend[rendKeys[0]].total : 1;
+
+  // Gráfica: top 15
+  const top15 = rendKeys.slice(0, 15);
+  const chartWrap = $('rep-rendidor-chart-wrap');
+  if (chartWrap) chartWrap.style.height = Math.max(180, top15.length * 36) + 'px';
+  const chartNote = $('rep-rendidor-chart-note');
+  if (chartNote) chartNote.textContent = rendKeys.length > 15 ? `(Top 15 de ${rendKeys.length})` : '';
+  _drawChart('chart-rendidores', 'bar', top15.map(k => byRend[k].name), top15.map(k => byRend[k].total), palette, true);
+
+  // Tabla detallada
+  const rendTbody = $('rep-rendidor-tbody');
+  if (rendTbody) {
+    if (!rendKeys.length) {
+      rendTbody.innerHTML = '<tr><td colspan="9" class="empty-row">Sin datos para el período seleccionado</td></tr>';
+    } else {
+      rendTbody.innerHTML = rendKeys.map(key => {
+        const r = byRend[key];
+        const pct = maxTotal > 0 ? Math.round((r.total / maxTotal) * 100) : 0;
+        const cell = (val, color) => val
+          ? `<span style="font-weight:600;color:${color}">${val}</span>`
+          : `<span style="color:#d1d5db">—</span>`;
+        return `<tr>
+          <td class="td td-bold">${_escapeHtml(r.name)}<div style="font-size:11px;color:#9ca3af;font-weight:400">${_escapeHtml(key)}</div></td>
+          <td class="td" style="min-width:140px">
+            <div style="font-weight:700;color:#111827">${fmt(r.total)}</div>
+            <div style="background:#f3f4f6;border-radius:3px;height:5px;margin-top:5px;overflow:hidden">
+              <div style="background:#1e40af;height:100%;width:${pct}%;border-radius:3px;transition:width .4s"></div>
+            </div>
+          </td>
+          <td class="td td-muted" style="text-align:center">${r.count}</td>
+          <td class="td" style="text-align:center">${cell(r.pendiente,  '#d97706')}</td>
+          <td class="td" style="text-align:center">${cell(r.aprobado,   '#0891b2')}</td>
+          <td class="td" style="text-align:center">${cell(r.autorizado, '#16a34a')}</td>
+          <td class="td" style="text-align:center">${cell(r.rechazado,  '#dc2626')}</td>
+          <td class="td" style="text-align:center">${cell(r.pendientePago, '#d97706')}</td>
+          <td class="td" style="text-align:center">${cell(r.pagado,     '#16a34a')}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
 }
 
 function _drawChart(id, type, labels, data, palette, horizontal = false) {

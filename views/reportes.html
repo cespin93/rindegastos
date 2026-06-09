@@ -82,4 +82,42 @@
       </div>
     </div>
   </div>
+
+  <!-- Gráfica: Ranking por Rendidor -->
+  <div class="rep-charts-row">
+    <div class="rep-chart-card" style="flex:1;min-width:0">
+      <div class="rep-chart-title">
+        Ranking de gasto por Rendidor
+        <span id="rep-rendidor-chart-note" style="font-size:11px;color:#9ca3af;font-weight:400;margin-left:6px"></span>
+      </div>
+      <div id="rep-rendidor-chart-wrap" style="position:relative;height:300px">
+        <canvas id="chart-rendidores"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla detallada por Rendidor -->
+  <div class="table-card" style="margin-top:0">
+    <div style="padding:16px 18px;font-size:14px;font-weight:700;border-bottom:1px solid #f3f4f6">
+      Detalle por Rendidor
+    </div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Rendidor</th>
+            <th>Total gastado</th>
+            <th>Docs</th>
+            <th style="text-align:center">Pendiente</th>
+            <th style="text-align:center">Aprobado</th>
+            <th style="text-align:center">Autorizado</th>
+            <th style="text-align:center">Rechazado</th>
+            <th style="text-align:center">Pend. pago</th>
+            <th style="text-align:center">Pagado</th>
+          </tr>
+        </thead>
+        <tbody id="rep-rendidor-tbody"></tbody>
+      </table>
+    </div>
+  </div>
 </div>
