@@ -30,19 +30,19 @@ const _canViewAllCompanies = () => {
   if (_isAdmin()) return true;
   return state.role === 'GERENTE' && !_getManagerCompanyScope();
 };
+const _emailKey = s => (s || '').toLowerCase().split('@')[0];
 const _canAccessExpense = exp => {
   if (_isAdmin()) return true;
   const user = getCurrentUser();
   if (!user?.email) return false;
+  const myKey = _emailKey(user.email);
   if (state.role === 'GERENTE') {
-    if (exp.email === user.email.toLowerCase()) return true;
+    if (_emailKey(exp.email) === myKey) return true; // propias, cualquier estado
     const empresaScope = _getManagerCompanyScope();
     return !empresaScope || exp.empresa === empresaScope;
   }
-  if (state.role === 'APROBADOR' && exp.approverEmail === user.email.toLowerCase()) {
-    return true;
-  }
-  return exp.email === user.email.toLowerCase();
+  if (state.role === 'APROBADOR' && _emailKey(exp.approverEmail) === myKey) return true;
+  return _emailKey(exp.email) === myKey;
 };
 const _getUserName = email => {
   const u = state.users.find(u => u.email === (email || '').toLowerCase());
@@ -1138,13 +1138,13 @@ async function navGerencia() {
     const all = await getExpenses();
     _mergeExpenses(all);
     const user = getCurrentUser();
-    const myEmail = user?.email?.toLowerCase() || '';
+    const myKey = _emailKey(user?.email || '');
     // Rendiciones propias del gerente (todas, para que las vea sin importar estado)
-    const myOwn = (state.role === 'GERENTE' && myEmail)
-      ? all.filter(e => e.email === myEmail).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    const myOwn = (state.role === 'GERENTE' && myKey)
+      ? all.filter(e => _emailKey(e.email) === myKey).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
       : [];
     // Cola de autorización: APROBADO de otros rendidores dentro del scope del gerente
-    const toAuthorize = all.filter(e => e.status === 'APROBADO' && e.email !== myEmail && _canAccessExpense(e));
+    const toAuthorize = all.filter(e => e.status === 'APROBADO' && _emailKey(e.email) !== myKey && _canAccessExpense(e));
     _renderGerencia(toAuthorize, myOwn);
     const countText = toAuthorize.length
       ? `${toAuthorize.length} pendiente${toAuthorize.length > 1 ? 's' : ''} de autorización`
