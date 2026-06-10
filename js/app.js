@@ -672,7 +672,7 @@ function _batchStatus(exps) {
 function _renderTable(exps) {
   const tbody = $('exp-tbody');
   if (!exps.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No hay rendiciones registradas</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row">No hay rendiciones registradas</td></tr>';
     return;
   }
 
@@ -712,6 +712,7 @@ function _renderTable(exps) {
         <td class="td td-bold">${fmt(total)}</td>
         <td class="td">${statusCell}</td>
         <td class="td td-muted">—</td>
+        <td class="td"></td>
       </tr>`);
   }
 
@@ -719,10 +720,10 @@ function _renderTable(exps) {
   for (const e of singles) {
     const delBtn = _canDeleteExpense(e)
       ? `<button onclick="deleteExpenseConfirm(${e.rowIndex},event)"
-           title="Eliminar rendición"
-           style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:15px;
-                  padding:0 2px;opacity:.65;line-height:1;vertical-align:middle"
-           onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.65">🗑</button>`
+           style="background:#dc2626;border:none;color:#fff;cursor:pointer;font-size:12px;
+                  font-weight:600;padding:5px 12px;border-radius:6px;white-space:nowrap"
+           onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">
+           🗑 Eliminar</button>`
       : '';
     rows.push(`
       <tr class="table-row" onclick="openDetail(${e.rowIndex},'dashboard')">
@@ -732,8 +733,9 @@ function _renderTable(exps) {
         <td class="td td-muted">${e.docType}</td>
         <td class="td td-muted">${e.docNumber || '—'}</td>
         <td class="td td-bold">${fmt(e.total)}</td>
-        <td class="td">${badge(e.status)}${delBtn}</td>
+        <td class="td">${badge(e.status)}</td>
         <td class="td td-muted">${_getUserName(e.approverEmail)}</td>
+        <td class="td" style="text-align:center">${delBtn}</td>
       </tr>`);
   }
 
