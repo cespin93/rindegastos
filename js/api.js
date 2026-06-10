@@ -91,6 +91,10 @@ async function addExpense(exp, userEmail, empresa) {
   return sheetsAppend('Rendiciones', _expenseToRow(exp, userEmail, empresa));
 }
 
+async function deleteExpense(rowIndex) {
+  return callBackend('deleteExpense', { rowIndex });
+}
+
 async function updateExpenseStatus(rowIndex, status, observations, approverEmail) {
   const col = n => String.fromCharCode(64 + n);
   return sheetsBatchUpdate([

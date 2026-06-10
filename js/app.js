@@ -31,6 +31,9 @@ const _canViewAllCompanies = () => {
   return state.role === 'GERENTE' && !_getManagerCompanyScope();
 };
 const _emailKey = s => (s || '').toLowerCase().split('@')[0];
+const _canDeleteExpense = exp =>
+  exp.status === 'PENDIENTE' &&
+  _emailKey(exp.email) === _emailKey(getCurrentUser()?.email || '');
 const _canAccessExpense = exp => {
   if (_isAdmin()) return true;
   const user = getCurrentUser();
@@ -714,6 +717,13 @@ function _renderTable(exps) {
 
   // Filas individuales
   for (const e of singles) {
+    const delBtn = _canDeleteExpense(e)
+      ? `<button onclick="deleteExpenseConfirm(${e.rowIndex},event)"
+           title="Eliminar rendición"
+           style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:15px;
+                  padding:0 2px;opacity:.65;line-height:1;vertical-align:middle"
+           onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.65">🗑</button>`
+      : '';
     rows.push(`
       <tr class="table-row" onclick="openDetail(${e.rowIndex},'dashboard')">
         <td class="td">${fmtDate(e.fechaGasto)}</td>
@@ -722,12 +732,32 @@ function _renderTable(exps) {
         <td class="td td-muted">${e.docType}</td>
         <td class="td td-muted">${e.docNumber || '—'}</td>
         <td class="td td-bold">${fmt(e.total)}</td>
-        <td class="td">${badge(e.status)}</td>
+        <td class="td">${badge(e.status)}${delBtn}</td>
         <td class="td td-muted">${_getUserName(e.approverEmail)}</td>
       </tr>`);
   }
 
   tbody.innerHTML = rows.join('');
+}
+
+async function deleteExpenseConfirm(rowIndex, event) {
+  event.stopPropagation();
+  const exp = state.expenses.find(e => e.rowIndex === rowIndex);
+  if (!exp) return;
+  if (!confirm(`¿Eliminar esta rendición?\n\n"${exp.title}" — ${fmt(exp.total)}\n\nEsta acción no se puede deshacer.`)) return;
+  loading(true);
+  try {
+    await deleteExpense(rowIndex);
+    state.expenses = state.expenses.filter(e => e.rowIndex !== rowIndex);
+    const mine = state.expenses.filter(_canAccessExpense);
+    _renderStats(mine);
+    _renderTable(mine);
+    toast('Rendición eliminada correctamente.', 'success');
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    loading(false);
+  }
 }
 
 function openBatchDetail(batchName, context = 'dashboard') {
