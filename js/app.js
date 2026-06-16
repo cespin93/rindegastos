@@ -2972,7 +2972,8 @@ function _buildPaymentPacketHtml(payload, options = {}) {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:12px;background:#fff}
-    table{width:100%;border-collapse:collapse;font-size:11px}
+    table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
+    td,th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     @media print{body{background:#fff}}
   </style>
 </head>
@@ -3071,15 +3072,15 @@ function _buildPaymentPacketHtml(payload, options = {}) {
       <table>
         <thead>
           <tr style="background:#1e3a8a;color:#fff">
-            <th style="padding:8px 6px;text-align:center;width:22px;font-size:10px">#</th>
-            <th style="padding:8px 6px;width:66px;font-size:10px">Fecha</th>
-            <th style="padding:8px 6px;width:52px;font-size:10px">Tipo</th>
-            <th style="padding:8px 6px;width:72px;font-size:10px">N° Folio</th>
-            <th style="padding:8px 6px;font-size:10px">Proveedor</th>
-            <th style="padding:8px 6px;font-size:10px">Categoría</th>
-            <th style="padding:8px 6px;font-size:10px">Concepto</th>
-            <th style="padding:8px 6px;width:84px;font-size:10px">Autorizado por</th>
-            <th style="padding:8px 6px;width:74px;text-align:right;font-size:10px">Total</th>
+            <th style="padding:8px 6px;text-align:center;width:3%;font-size:10px">#</th>
+            <th style="padding:8px 6px;width:8%;font-size:10px">Fecha</th>
+            <th style="padding:8px 6px;width:7%;font-size:10px">Tipo</th>
+            <th style="padding:8px 6px;width:9%;font-size:10px">N° Folio</th>
+            <th style="padding:8px 6px;width:17%;font-size:10px">Proveedor</th>
+            <th style="padding:8px 6px;width:12%;font-size:10px">Categoría</th>
+            <th style="padding:8px 6px;width:19%;font-size:10px">Concepto</th>
+            <th style="padding:8px 6px;width:13%;font-size:10px">Autorizado por</th>
+            <th style="padding:8px 6px;width:12%;text-align:right;font-size:10px">Total</th>
           </tr>
         </thead>
         <tbody>
