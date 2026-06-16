@@ -3076,11 +3076,11 @@ function _buildPaymentPacketHtml(payload, options = {}) {
             <th style="padding:8px 6px;width:8%;font-size:10px">Fecha</th>
             <th style="padding:8px 6px;width:7%;font-size:10px">Tipo</th>
             <th style="padding:8px 6px;width:9%;font-size:10px">N° Folio</th>
-            <th style="padding:8px 6px;width:17%;font-size:10px">Proveedor</th>
-            <th style="padding:8px 6px;width:12%;font-size:10px">Categoría</th>
-            <th style="padding:8px 6px;width:19%;font-size:10px">Concepto</th>
-            <th style="padding:8px 6px;width:13%;font-size:10px">Autorizado por</th>
-            <th style="padding:8px 6px;width:12%;text-align:right;font-size:10px">Total</th>
+            <th style="padding:8px 6px;width:16%;font-size:10px">Proveedor</th>
+            <th style="padding:8px 6px;width:11%;font-size:10px">Categoría</th>
+            <th style="padding:8px 6px;width:15%;font-size:10px">Concepto</th>
+            <th style="padding:8px 6px;width:11%;font-size:10px">Autorizado por</th>
+            <th style="padding:8px 6px;width:17%;text-align:right;font-size:10px">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -3088,10 +3088,10 @@ function _buildPaymentPacketHtml(payload, options = {}) {
           <!-- Fila total -->
           <tr style="background:#1e3a8a;color:#fff">
             <td colspan="8" style="padding:10px 6px;text-align:right;font-weight:700;font-size:12px;
-                                   text-transform:uppercase;letter-spacing:.04em">
+                                   text-transform:uppercase;letter-spacing:.04em;overflow:visible">
               Total a transferir
             </td>
-            <td style="padding:10px 6px;text-align:right;font-weight:800;font-size:15px">
+            <td style="padding:10px 6px;text-align:right;font-weight:800;font-size:14px;overflow:visible">
               ${fmt(total)}
             </td>
           </tr>
