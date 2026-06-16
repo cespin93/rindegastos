@@ -2970,10 +2970,11 @@ function _buildPaymentPacketHtml(payload, options = {}) {
   <meta charset="utf-8">
   <title>Comprobante ${_escapeHtml(payment.paymentBatchId || '')}</title>
   <style>
+    @page{size:A4 landscape;margin:10mm}
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:12px;background:#fff}
     table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
-    td,th{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    td,th{word-wrap:break-word;overflow-wrap:break-word}
     @media print{body{background:#fff}}
   </style>
 </head>
@@ -3073,14 +3074,14 @@ function _buildPaymentPacketHtml(payload, options = {}) {
         <thead>
           <tr style="background:#1e3a8a;color:#fff">
             <th style="padding:8px 6px;text-align:center;width:3%;font-size:10px">#</th>
-            <th style="padding:8px 6px;width:8%;font-size:10px">Fecha</th>
-            <th style="padding:8px 6px;width:7%;font-size:10px">Tipo</th>
-            <th style="padding:8px 6px;width:9%;font-size:10px">N° Folio</th>
-            <th style="padding:8px 6px;width:16%;font-size:10px">Proveedor</th>
+            <th style="padding:8px 6px;width:7%;font-size:10px">Fecha</th>
+            <th style="padding:8px 6px;width:6%;font-size:10px">Tipo</th>
+            <th style="padding:8px 6px;width:8%;font-size:10px">N° Folio</th>
+            <th style="padding:8px 6px;width:17%;font-size:10px">Proveedor</th>
             <th style="padding:8px 6px;width:11%;font-size:10px">Categoría</th>
-            <th style="padding:8px 6px;width:15%;font-size:10px">Concepto</th>
-            <th style="padding:8px 6px;width:11%;font-size:10px">Autorizado por</th>
-            <th style="padding:8px 6px;width:17%;text-align:right;font-size:10px">Total</th>
+            <th style="padding:8px 6px;width:25%;font-size:10px">Concepto</th>
+            <th style="padding:8px 6px;width:12%;font-size:10px">Autorizado por</th>
+            <th style="padding:8px 6px;width:11%;text-align:right;font-size:10px">Total</th>
           </tr>
         </thead>
         <tbody>
@@ -3088,10 +3089,10 @@ function _buildPaymentPacketHtml(payload, options = {}) {
           <!-- Fila total -->
           <tr style="background:#1e3a8a;color:#fff">
             <td colspan="8" style="padding:10px 6px;text-align:right;font-weight:700;font-size:12px;
-                                   text-transform:uppercase;letter-spacing:.04em;overflow:visible">
+                                   text-transform:uppercase;letter-spacing:.04em">
               Total a transferir
             </td>
-            <td style="padding:10px 6px;text-align:right;font-weight:800;font-size:14px;overflow:visible">
+            <td style="padding:10px 6px;text-align:right;font-weight:800;font-size:14px">
               ${fmt(total)}
             </td>
           </tr>
