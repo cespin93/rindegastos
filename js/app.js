@@ -2970,7 +2970,7 @@ function _buildPaymentPacketHtml(payload, options = {}) {
   <meta charset="utf-8">
   <title>Comprobante ${_escapeHtml(payment.paymentBatchId || '')}</title>
   <style>
-    @page{size:A4 landscape;margin:10mm}
+    @page summaryPage{size:A4 landscape;margin:10mm}
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:Arial,Helvetica,sans-serif;color:#111827;font-size:12px;background:#fff}
     table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed}
@@ -2980,8 +2980,8 @@ function _buildPaymentPacketHtml(payload, options = {}) {
 </head>
 <body>
 
-<!-- ── PÁGINA 1: DESGLOSE ── -->
-<div style="page-break-after:always;font-family:Arial,Helvetica,sans-serif">
+<!-- ── PÁGINA 1: DESGLOSE (horizontal) ── -->
+<div style="page-break-after:always;font-family:Arial,Helvetica,sans-serif;page:summaryPage">
 
   <!-- Cabecera azul oscuro -->
   <div style="background:#1e3a8a;color:#fff;padding:20px 28px;display:flex;justify-content:space-between;align-items:center">
