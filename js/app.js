@@ -2759,37 +2759,35 @@ async function _pdfToImages(base64data, scale = 2) {
 }
 
 async function _buildPaymentPrintSnapshot(expenses) {
-  const snapshot = [];
-  for (const exp of expenses) {
-    const cloned   = { ...exp, receipts: [] };
-    const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
-    for (const receipt of receipts) {
-      const clonedReceipt = { ...receipt };
-      if (receipt?.id) {
-        try {
-          const content = await getReceiptContent(receipt.id);
-          if (content?.data && content?.mime) {
-            if (content.mime.includes('pdf')) {
-              try {
-                clonedReceipt.pdfImages = await _pdfToImages(content.data);
-              } catch {
-                clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
-              }
-              clonedReceipt.mime = content.mime;
-            } else {
-              clonedReceipt.inlineUrl = `data:${content.mime};base64,${content.data}`;
-              clonedReceipt.mime = content.mime;
-            }
+  const _fetchReceipt = async (receipt) => {
+    const cloned = { ...receipt };
+    if (!receipt?.id) return cloned;
+    try {
+      const content = await getReceiptContent(receipt.id);
+      if (content?.data && content?.mime) {
+        if (content.mime.includes('pdf')) {
+          try {
+            cloned.pdfImages = await _pdfToImages(content.data);
+          } catch {
+            cloned.inlineUrl = `data:${content.mime};base64,${content.data}`;
           }
-        } catch (err) {
-          clonedReceipt.loadError = err.message;
+          cloned.mime = content.mime;
+        } else {
+          cloned.inlineUrl = `data:${content.mime};base64,${content.data}`;
+          cloned.mime = content.mime;
         }
       }
-      cloned.receipts.push(clonedReceipt);
+    } catch (err) {
+      cloned.loadError = err.message;
     }
-    snapshot.push(cloned);
-  }
-  return snapshot;
+    return cloned;
+  };
+
+  return Promise.all(expenses.map(async exp => {
+    const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
+    const clonedReceipts = await Promise.all(receipts.map(_fetchReceipt));
+    return { ...exp, receipts: clonedReceipts };
+  }));
 }
 
 function _buildPaymentAttachments(expenses) {
@@ -3128,9 +3126,14 @@ ${attachments}
 }
 
 async function _persistPaymentStatus(expenses, payload) {
-  for (const exp of expenses) {
-    await updateExpensePayment(exp.rowIndex, payload);
-    Object.assign(exp, payload);
+  const BATCH = 10;
+  for (let i = 0; i < expenses.length; i += BATCH) {
+    await Promise.all(
+      expenses.slice(i, i + BATCH).map(async exp => {
+        await updateExpensePayment(exp.rowIndex, payload);
+        Object.assign(exp, payload);
+      })
+    );
   }
 }
 
