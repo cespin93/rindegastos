@@ -88,7 +88,12 @@ function blockingAlert(msg) {
   window.alert(msg);
 }
 
-function loading(show) { $('loading').classList.toggle('hidden', !show); }
+function loading(show, text, sub) {
+  $('loading').classList.toggle('hidden', !show);
+  const t = $('loading-text'), s = $('loading-sub');
+  if (t) t.textContent = text || 'Cargando...';
+  if (s) { s.textContent = sub || ''; s.style.display = sub ? '' : 'none'; }
+}
 
 function showView(id) {
   state.prevView = document.querySelector('.view:not(.hidden)')?.id || null;
@@ -2762,6 +2767,17 @@ async function _pdfToImages(base64data, scale = 2) {
 }
 
 async function _buildPaymentPrintSnapshot(expenses) {
+  const totalReceipts = expenses.reduce((s, e) => s + Math.max(1, (Array.isArray(e.receipts) ? e.receipts : []).filter(r => r?.id).length), 0);
+  let doneReceipts = 0;
+
+  const _updateProgress = () => {
+    loading(true,
+      `Generando comprobante... (${doneReceipts} de ${totalReceipts} adjuntos)`,
+      'Por favor espera, esto puede tomar varios minutos para lotes grandes.'
+    );
+  };
+  _updateProgress();
+
   // Semáforo: máx 8 descargas simultáneas para no saturar Apps Script
   let _active = 0;
   const _waiters = [];
@@ -2806,6 +2822,8 @@ async function _buildPaymentPrintSnapshot(expenses) {
       cloned.loadError = err.message;
     } finally {
       _release();
+      doneReceipts++;
+      _updateProgress();
     }
     return cloned;
   };
@@ -3201,6 +3219,7 @@ async function preparePaymentBatch() {
       expenses: snapshot
     };
     const html = _buildPaymentPacketHtml(paymentPayload, { autoPrint: false });
+    loading(true, 'Generando PDF...', 'El servidor está convirtiendo el comprobante, por favor espera.');
     const savedPacket = await savePaymentPacket(paymentBatchId, html);
     const rowIndexes = selected.map(exp => exp.rowIndex);
     const totalAmount = selected.reduce((sum, exp) => sum + exp.total, 0);
