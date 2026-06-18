@@ -2825,58 +2825,29 @@ function _buildPaymentAttachments(expenses) {
 
     receipts.forEach((receipt, rIdx) => {
       const baseLabel = receipts.length > 1 ? `(${rIdx + 1}/${receipts.length})` : '';
-      const mime      = String(receipt.mime || '');
-      const fname     = receipt.name || '—';
-      const isPdf     = mime.includes('pdf') || fname.toLowerCase().endsWith('.pdf');
-      const isImage   = !isPdf && (mime.startsWith('image/') ||
-                          /\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/i.test(fname));
-      // URL directa de Drive para incrustar en <img> — HtmlService puede
-      // renderizarla porque los archivos son públicos (ANYONE_WITH_LINK).
-      const driveImgUrl = receipt.id
-        ? `https://drive.google.com/uc?export=view&id=${receipt.id}` : '';
-      const driveViewUrl = receipt.url || (receipt.id
-        ? `https://drive.google.com/file/d/${receipt.id}/view` : '');
+      const fname = receipt.name || '—';
 
       const label = `${idx} de ${totalReceipts}${baseLabel ? ' ' + baseLabel : ''}`;
       let body;
 
-      if (isImage && driveImgUrl) {
+      if (receipt.id) {
+        // drive-embed:// es un marcador — Apps Script lo reemplaza con data:... antes
+        // de convertir a PDF. Funciona tanto para imágenes como para PDFs (thumbnail).
         body = `
           <div style="flex:1;display:flex;align-items:center;justify-content:center;
-                      background:#ffffff;overflow:hidden;padding:8px">
-            <img src="${driveImgUrl}" alt="${_escapeHtml(fname)}"
+                      background:#ffffff;overflow:hidden;padding:4px">
+            <img src="drive-embed://${receipt.id}" alt="${_escapeHtml(fname)}"
                  style="max-width:100%;max-height:100%;object-fit:contain;display:block">
-          </div>`;
-      } else if (isPdf) {
-        body = `
-          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
-                      gap:12px;padding:40px;text-align:center;background:#f0f4ff;flex:1">
-            <div style="font-size:56px">📑</div>
-            <div style="font-size:16px;font-weight:800;color:#1e3a8a">${_escapeHtml(fname)}</div>
-            <div style="font-size:12px;color:#6b7280">
-              ${_escapeHtml(exp.docType || '')} ${_escapeHtml(exp.docNumber || '')} · ${_escapeHtml(exp.provider || '')}
-            </div>
-            ${driveViewUrl ? `<a href="${_escapeHtml(driveViewUrl)}" target="_blank"
-              style="background:#1e3a8a;color:#fff;padding:10px 28px;border-radius:10px;
-                     text-decoration:none;font-size:13px;font-weight:700;margin-top:4px">
-              Abrir PDF en Drive ↗</a>` : ''}
-          </div>`;
-      } else if (driveViewUrl) {
-        body = `
-          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
-                      gap:10px;padding:32px;flex:1">
-            <div style="font-size:36px">📎</div>
-            <div style="font-size:13px;font-weight:700">${_escapeHtml(fname)}</div>
-            <a href="${_escapeHtml(driveViewUrl)}" target="_blank"
-               style="background:#1e40af;color:#fff;padding:8px 20px;border-radius:8px;
-                      text-decoration:none;font-size:12px;font-weight:700">Abrir archivo ↗</a>
           </div>`;
       } else {
         body = `
           <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
                       gap:8px;padding:32px;color:#9ca3af;flex:1">
-            <div style="font-size:32px">🔗</div>
-            <div style="font-size:12px">Adjunto sin URL disponible</div>
+            <div style="font-size:32px">📎</div>
+            <div style="font-size:13px">${_escapeHtml(fname)}</div>
+            ${receipt.url ? `<a href="${_escapeHtml(receipt.url)}" target="_blank"
+              style="background:#1e40af;color:#fff;padding:8px 20px;border-radius:8px;
+                     text-decoration:none;font-size:12px">Abrir en Drive ↗</a>` : ''}
           </div>`;
       }
 

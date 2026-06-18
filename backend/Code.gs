@@ -701,10 +701,42 @@ function _applyFileSharing(file) {
   return sharing;
 }
 
+function _embedDriveImages(html) {
+  // Replace drive-embed://FILE_ID placeholders with actual base64 data URIs.
+  // Uses Drive thumbnail API (server-side) — no CORS, no auth issues, controlled size.
+  var token = ScriptApp.getOAuthToken();
+  return html.replace(/src="drive-embed:\/\/([^"]+)"/g, function(match, fileId) {
+    try {
+      // Thumbnail at up to 1200×1600 px — legible when printed, keeps HTML manageable.
+      var thumbUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1200-h1600';
+      var res = UrlFetchApp.fetch(thumbUrl, {
+        headers: { Authorization: 'Bearer ' + token },
+        muteHttpExceptions: true,
+        followRedirects: true
+      });
+      if (res.getResponseCode() === 200) {
+        return 'src="data:image/jpeg;base64,' + Utilities.base64Encode(res.getContent()) + '"';
+      }
+      // Fallback: raw file if ≤ 1 MB
+      var blob = DriveApp.getFileById(fileId).getBlob();
+      var raw = blob.getBytes();
+      if (raw.length <= 1048576) {
+        return 'src="data:' + (blob.getContentType() || 'image/jpeg') + ';base64,' + Utilities.base64Encode(raw) + '"';
+      }
+      return 'src=""';
+    } catch (e) {
+      return 'src=""';
+    }
+  });
+}
+
 function _savePaymentPacket(params, user) {
   _requireAdmin(user, 'Solo administración puede guardar comprobantes de pago.');
   var html = String(params && params.html || '').trim();
   if (!html) throw new Error('El comprobante no contiene contenido para guardar.');
+
+  // Embed all Drive images server-side before PDF conversion.
+  html = _embedDriveImages(html);
 
   var batchId = String(params && params.paymentBatchId || 'pago').trim();
   var fileName = _sanitizeFileName('comprobante-' + batchId + '.pdf');
