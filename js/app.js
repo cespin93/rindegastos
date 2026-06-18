@@ -2770,76 +2770,12 @@ async function _pdfToImages(base64data, scale = 2) {
 }
 
 async function _buildPaymentPrintSnapshot(expenses) {
-  const totalReceipts = expenses.reduce((s, e) => s + (Array.isArray(e.receipts) ? e.receipts : []).filter(r => r?.id).length, 0);
-  let doneReceipts = 0;
-
-  const _updateProgress = () => loading(true,
-    `Generando comprobante... (${doneReceipts} de ${totalReceipts} adjuntos)`,
-    'Por favor espera, esto puede tomar varios minutos para lotes grandes.'
-  );
-  _updateProgress();
-
-  // Los fetches van en paralelo (máx 8) pero el renderizado de PDF se serializa
-  // para evitar conflictos del worker de PDF.js con documentos concurrentes.
-  let _renderChain = Promise.resolve();
-
-  // Semáforo: máx 8 descargas simultáneas
-  let _active = 0;
-  const _waiters = [];
-  const _acquire = () => new Promise(resolve => {
-    if (_active < 8) { _active++; resolve(); }
-    else _waiters.push(resolve);
-  });
-  const _release = () => {
-    _active--;
-    if (_waiters.length) { _active++; _waiters.shift()(); }
-  };
-
-  const _fetchWithRetry = async (fn, retries = 2) => {
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try { return await fn(); } catch (err) {
-        if (attempt === retries) throw err;
-        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
-      }
-    }
-  };
-
-  const _fetchReceipt = async (receipt) => {
-    const cloned = { ...receipt };
-    if (!receipt?.id) return cloned;
-    await _acquire();
-    try {
-      const content = await _fetchWithRetry(() => getReceiptContent(receipt.id));
-      if (content?.data && content?.mime) {
-        if (content.mime.includes('pdf')) {
-          // Serializar renders de PDF: encadenar en la cola, esperar turno
-          await (_renderChain = _renderChain.then(async () => {
-            try {
-              cloned.pdfImages = await _pdfToImages(content.data);
-            } catch {
-              cloned.inlineUrl = `data:${content.mime};base64,${content.data}`;
-            }
-            cloned.mime = content.mime;
-          }));
-        } else {
-          cloned.inlineUrl = `data:${content.mime};base64,${content.data}`;
-          cloned.mime = content.mime;
-        }
-      }
-    } catch (err) {
-      cloned.loadError = err.message;
-    } finally {
-      _release();
-      doneReceipts++;
-      _updateProgress();
-    }
-    return cloned;
-  };
-
-  return Promise.all(expenses.map(async exp => {
-    const receipts = Array.isArray(exp.receipts) ? exp.receipts : [];
-    const clonedReceipts = await Promise.all(receipts.map(_fetchReceipt));
-    return { ...exp, receipts: clonedReceipts };
+  loading(true, 'Generando comprobante...', 'Construyendo el PDF, por favor espera.');
+  // Las imágenes se renderizan directamente desde Drive (URL pública).
+  // No es necesario descargar ni codificar los archivos en el frontend.
+  return expenses.map(exp => ({
+    ...exp,
+    receipts: Array.isArray(exp.receipts) ? exp.receipts.map(r => ({ ...r })) : []
   }));
 }
 
@@ -2889,56 +2825,29 @@ function _buildPaymentAttachments(expenses) {
 
     receipts.forEach((receipt, rIdx) => {
       const baseLabel = receipts.length > 1 ? `(${rIdx + 1}/${receipts.length})` : '';
-      const source    = receipt.inlineUrl || receipt.url || '';
       const mime      = String(receipt.mime || '');
       const fname     = receipt.name || '—';
+      const isPdf     = mime.includes('pdf') || fname.toLowerCase().endsWith('.pdf');
+      const isImage   = !isPdf && (mime.startsWith('image/') ||
+                          /\.(jpe?g|png|gif|webp|bmp|heic|heif|tiff?)$/i.test(fname));
+      // URL directa de Drive para incrustar en <img> — HtmlService puede
+      // renderizarla porque los archivos son públicos (ANYONE_WITH_LINK).
+      const driveImgUrl = receipt.id
+        ? `https://drive.google.com/uc?export=view&id=${receipt.id}` : '';
+      const driveViewUrl = receipt.url || (receipt.id
+        ? `https://drive.google.com/file/d/${receipt.id}/view` : '');
 
-      // ── PDF convertido a imágenes (una página = una hoja) ──
-      if (receipt.pdfImages && receipt.pdfImages.length > 0) {
-        receipt.pdfImages.forEach((imgSrc, pageIdx) => {
-          const pageTag  = receipt.pdfImages.length > 1
-            ? ` · Pág. ${pageIdx + 1}/${receipt.pdfImages.length}` : '';
-          const fullLabel = `${idx} de ${totalReceipts}${baseLabel}${pageTag}`;
-          sections.push(`
-            <div style="height:100vh;page-break-after:always;display:flex;flex-direction:column;
-                        font-family:Arial,sans-serif;overflow:hidden;box-sizing:border-box">
-              ${_header(fullLabel)}
-              <div style="flex:1;overflow:hidden;background:#fff;display:flex;
-                          align-items:center;justify-content:center">
-                <img src="${imgSrc}" alt="${_escapeHtml(fname)}"
-                     style="max-width:100%;max-height:100%;object-fit:contain;display:block">
-              </div>
-            </div>`);
-        });
-        idx++;
-        return;
-      }
-
-      // ── Resto de casos ──
       const label = `${idx} de ${totalReceipts}${baseLabel ? ' ' + baseLabel : ''}`;
       let body;
 
-      if (receipt.loadError) {
-        body = `
-          <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
-                      gap:10px;padding:32px;text-align:center">
-            <div style="font-size:32px">⚠️</div>
-            <div style="font-size:14px;font-weight:700;color:#dc2626">No se pudo cargar el adjunto</div>
-            <div style="font-size:12px;color:#6b7280;max-width:400px">${_escapeHtml(receipt.loadError)}</div>
-            ${receipt.url ? `<a href="${_escapeHtml(receipt.url)}" target="_blank"
-              style="margin-top:8px;background:#1e40af;color:#fff;padding:8px 20px;
-                     border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">
-              Abrir en Drive ↗</a>` : ''}
-          </div>`;
-      } else if (source && mime.startsWith('image/')) {
+      if (isImage && driveImgUrl) {
         body = `
           <div style="flex:1;display:flex;align-items:center;justify-content:center;
-                      background:#fff;overflow:hidden">
-            <img src="${source}" alt="${_escapeHtml(fname)}"
+                      background:#ffffff;overflow:hidden;padding:8px">
+            <img src="${driveImgUrl}" alt="${_escapeHtml(fname)}"
                  style="max-width:100%;max-height:100%;object-fit:contain;display:block">
           </div>`;
-      } else if (mime.includes('pdf') || fname.toLowerCase().endsWith('.pdf')) {
-        const driveUrl = receipt.url || source;
+      } else if (isPdf) {
         body = `
           <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
                       gap:12px;padding:40px;text-align:center;background:#f0f4ff;flex:1">
@@ -2947,18 +2856,18 @@ function _buildPaymentAttachments(expenses) {
             <div style="font-size:12px;color:#6b7280">
               ${_escapeHtml(exp.docType || '')} ${_escapeHtml(exp.docNumber || '')} · ${_escapeHtml(exp.provider || '')}
             </div>
-            ${driveUrl ? `<a href="${_escapeHtml(driveUrl)}" target="_blank"
+            ${driveViewUrl ? `<a href="${_escapeHtml(driveViewUrl)}" target="_blank"
               style="background:#1e3a8a;color:#fff;padding:10px 28px;border-radius:10px;
                      text-decoration:none;font-size:13px;font-weight:700;margin-top:4px">
               Abrir PDF en Drive ↗</a>` : ''}
           </div>`;
-      } else if (source) {
+      } else if (driveViewUrl) {
         body = `
           <div style="display:flex;align-items:center;justify-content:center;flex-direction:column;
                       gap:10px;padding:32px;flex:1">
             <div style="font-size:36px">📎</div>
             <div style="font-size:13px;font-weight:700">${_escapeHtml(fname)}</div>
-            <a href="${_escapeHtml(source)}" target="_blank"
+            <a href="${_escapeHtml(driveViewUrl)}" target="_blank"
                style="background:#1e40af;color:#fff;padding:8px 20px;border-radius:8px;
                       text-decoration:none;font-size:12px;font-weight:700">Abrir archivo ↗</a>
           </div>`;
