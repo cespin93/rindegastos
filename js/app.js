@@ -2728,9 +2728,11 @@ function toggleContaSelection(rowIndex) {
   _renderConta(_contaFiltered);
 }
 
+let _pdfJsLoadPromise = null;
 function _loadPdfJs() {
   if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-  return new Promise((resolve, reject) => {
+  if (_pdfJsLoadPromise) return _pdfJsLoadPromise;
+  _pdfJsLoadPromise = new Promise((resolve, reject) => {
     const s = document.createElement('script');
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
     s.onload = () => {
@@ -2738,9 +2740,10 @@ function _loadPdfJs() {
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
       resolve(window.pdfjsLib);
     };
-    s.onerror = () => reject(new Error('No se pudo cargar PDF.js'));
+    s.onerror = (e) => { _pdfJsLoadPromise = null; reject(new Error('No se pudo cargar PDF.js')); };
     document.head.appendChild(s);
   });
+  return _pdfJsLoadPromise;
 }
 
 async function _pdfToImages(base64data, scale = 2) {
@@ -2767,18 +2770,20 @@ async function _pdfToImages(base64data, scale = 2) {
 }
 
 async function _buildPaymentPrintSnapshot(expenses) {
-  const totalReceipts = expenses.reduce((s, e) => s + Math.max(1, (Array.isArray(e.receipts) ? e.receipts : []).filter(r => r?.id).length), 0);
+  const totalReceipts = expenses.reduce((s, e) => s + (Array.isArray(e.receipts) ? e.receipts : []).filter(r => r?.id).length, 0);
   let doneReceipts = 0;
 
-  const _updateProgress = () => {
-    loading(true,
-      `Generando comprobante... (${doneReceipts} de ${totalReceipts} adjuntos)`,
-      'Por favor espera, esto puede tomar varios minutos para lotes grandes.'
-    );
-  };
+  const _updateProgress = () => loading(true,
+    `Generando comprobante... (${doneReceipts} de ${totalReceipts} adjuntos)`,
+    'Por favor espera, esto puede tomar varios minutos para lotes grandes.'
+  );
   _updateProgress();
 
-  // Semáforo: máx 8 descargas simultáneas para no saturar Apps Script
+  // Los fetches van en paralelo (máx 8) pero el renderizado de PDF se serializa
+  // para evitar conflictos del worker de PDF.js con documentos concurrentes.
+  let _renderChain = Promise.resolve();
+
+  // Semáforo: máx 8 descargas simultáneas
   let _active = 0;
   const _waiters = [];
   const _acquire = () => new Promise(resolve => {
@@ -2807,12 +2812,15 @@ async function _buildPaymentPrintSnapshot(expenses) {
       const content = await _fetchWithRetry(() => getReceiptContent(receipt.id));
       if (content?.data && content?.mime) {
         if (content.mime.includes('pdf')) {
-          try {
-            cloned.pdfImages = await _pdfToImages(content.data);
-          } catch {
-            cloned.inlineUrl = `data:${content.mime};base64,${content.data}`;
-          }
-          cloned.mime = content.mime;
+          // Serializar renders de PDF: encadenar en la cola, esperar turno
+          await (_renderChain = _renderChain.then(async () => {
+            try {
+              cloned.pdfImages = await _pdfToImages(content.data);
+            } catch {
+              cloned.inlineUrl = `data:${content.mime};base64,${content.data}`;
+            }
+            cloned.mime = content.mime;
+          }));
         } else {
           cloned.inlineUrl = `data:${content.mime};base64,${content.data}`;
           cloned.mime = content.mime;
