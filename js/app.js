@@ -2752,18 +2752,43 @@ async function _pdfToImages(base64data, scale = 2) {
     const canvas   = document.createElement('canvas');
     canvas.width   = viewport.width;
     canvas.height  = viewport.height;
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
     images.push(canvas.toDataURL('image/jpeg', 0.88));
   }
   return images;
 }
 
 async function _buildPaymentPrintSnapshot(expenses) {
+  // Semáforo: máx 8 descargas simultáneas para no saturar Apps Script
+  let _active = 0;
+  const _waiters = [];
+  const _acquire = () => new Promise(resolve => {
+    if (_active < 8) { _active++; resolve(); }
+    else _waiters.push(resolve);
+  });
+  const _release = () => {
+    _active--;
+    if (_waiters.length) { _active++; _waiters.shift()(); }
+  };
+
+  const _fetchWithRetry = async (fn, retries = 2) => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try { return await fn(); } catch (err) {
+        if (attempt === retries) throw err;
+        await new Promise(r => setTimeout(r, 1200 * (attempt + 1)));
+      }
+    }
+  };
+
   const _fetchReceipt = async (receipt) => {
     const cloned = { ...receipt };
     if (!receipt?.id) return cloned;
+    await _acquire();
     try {
-      const content = await getReceiptContent(receipt.id);
+      const content = await _fetchWithRetry(() => getReceiptContent(receipt.id));
       if (content?.data && content?.mime) {
         if (content.mime.includes('pdf')) {
           try {
@@ -2779,6 +2804,8 @@ async function _buildPaymentPrintSnapshot(expenses) {
       }
     } catch (err) {
       cloned.loadError = err.message;
+    } finally {
+      _release();
     }
     return cloned;
   };
