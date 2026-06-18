@@ -704,53 +704,50 @@ function _applyFileSharing(file) {
 function _embedDriveImages(html) {
   var token = ScriptApp.getOAuthToken();
 
-  // Collect unique file IDs (preserve order, avoid duplicate fetches)
+  // Collect unique IDs from data-drive="..." attributes on img tags
   var fileIds = [];
   var seen = {};
-  var re = /src="drive-embed:\/\/([^"]+)"/g;
+  var re = /data-drive="([^"]+)"/g;
   var m;
   while ((m = re.exec(html)) !== null) {
     if (!seen[m[1]]) { seen[m[1]] = true; fileIds.push(m[1]); }
   }
   if (!fileIds.length) return html;
 
-  // Fetch all thumbnails in parallel — avoids sequential timeout with many receipts.
-  // sz=w700-h900: readable when printed on A4, keeps each thumbnail ~60-150 KB.
+  // Fetch all thumbnails in parallel.
+  // sz=w600-h800: ~50 KB/imagen → 88 imágenes ≈ 5 MB base64, dentro del límite de HtmlService.
   var requests = fileIds.map(function(id) {
     return {
-      url: 'https://drive.google.com/thumbnail?id=' + id + '&sz=w700-h900',
+      url: 'https://drive.google.com/thumbnail?id=' + id + '&sz=w600-h800',
       headers: { Authorization: 'Bearer ' + token },
       muteHttpExceptions: true,
       followRedirects: true
     };
   });
 
-  var responses;
-  try { responses = UrlFetchApp.fetchAll(requests); }
-  catch (e) { Logger.log('fetchAll error: ' + e); return html; }
-
   var uriMap = {};
-  fileIds.forEach(function(id, i) {
-    try {
-      var res = responses[i];
-      var ct  = String(res.getHeaders()['Content-Type'] || res.getHeaders()['content-type'] || '');
-      if (res.getResponseCode() === 200 && ct.indexOf('image') !== -1) {
-        uriMap[id] = 'data:image/jpeg;base64,' + Utilities.base64Encode(res.getContent());
-        return;
-      }
-    } catch (e) { /* skip */ }
-    // Fallback: raw file only if ≤ 700 KB (avoids bloating the HTML)
-    try {
-      var blob = DriveApp.getFileById(id).getBlob();
-      var raw  = blob.getBytes();
-      if (raw.length <= 716800) {
-        uriMap[id] = 'data:' + (blob.getContentType() || 'image/jpeg') + ';base64,' + Utilities.base64Encode(raw);
-      }
-    } catch (fe) { /* skip */ }
-  });
+  try {
+    var responses = UrlFetchApp.fetchAll(requests);
+    fileIds.forEach(function(id, i) {
+      try {
+        var res = responses[i];
+        var ct  = String(res.getHeaders()['Content-Type'] || res.getHeaders()['content-type'] || '');
+        if (res.getResponseCode() === 200 && ct.indexOf('image') !== -1) {
+          uriMap[id] = 'data:image/jpeg;base64,' + Utilities.base64Encode(res.getContent());
+        }
+      } catch (e) { /* skip individual failure */ }
+    });
+  } catch (e) {
+    Logger.log('_embedDriveImages fetchAll error: ' + e);
+    // uriMap stays empty — img tags keep their valid placeholder src, PDF still converts OK
+  }
 
-  return html.replace(/src="drive-embed:\/\/([^"]+)"/g, function(match, id) {
-    return uriMap[id] ? 'src="' + uriMap[id] + '"' : 'src=""';
+  // Replace src of each img tag that has a data-drive attribute with the real data URI.
+  // Regex matches the full img tag regardless of attribute order.
+  return html.replace(/(<img[^>]*?)data-drive="([^"]+)"([^>]*?>)/g, function(tag, pre, id, post) {
+    var uri = uriMap[id];
+    if (!uri) return tag; // keep placeholder GIF src as-is
+    return (pre + 'data-drive="' + id + '"' + post).replace(/src="[^"]*"/, 'src="' + uri + '"');
   });
 }
 

@@ -2831,12 +2831,13 @@ function _buildPaymentAttachments(expenses) {
       let body;
 
       if (receipt.id) {
-        // drive-embed:// es un marcador — Apps Script lo reemplaza con data:... antes
-        // de convertir a PDF. Funciona tanto para imágenes como para PDFs (thumbnail).
+        // src contiene un GIF transparente 1×1 válido — HtmlService nunca falla con él.
+        // Apps Script reemplaza el src real usando el atributo data-drive antes de convertir.
         body = `
           <div style="flex:1;display:flex;align-items:center;justify-content:center;
                       background:#ffffff;overflow:hidden;padding:4px">
-            <img src="drive-embed://${receipt.id}" alt="${_escapeHtml(fname)}"
+            <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                 data-drive="${receipt.id}" alt="${_escapeHtml(fname)}"
                  style="max-width:100%;max-height:100%;object-fit:contain;display:block">
           </div>`;
       } else {
