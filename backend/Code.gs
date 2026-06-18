@@ -702,31 +702,55 @@ function _applyFileSharing(file) {
 }
 
 function _embedDriveImages(html) {
-  // Replace drive-embed://FILE_ID placeholders with actual base64 data URIs.
-  // Uses Drive thumbnail API (server-side) — no CORS, no auth issues, controlled size.
   var token = ScriptApp.getOAuthToken();
-  return html.replace(/src="drive-embed:\/\/([^"]+)"/g, function(match, fileId) {
+
+  // Collect unique file IDs (preserve order, avoid duplicate fetches)
+  var fileIds = [];
+  var seen = {};
+  var re = /src="drive-embed:\/\/([^"]+)"/g;
+  var m;
+  while ((m = re.exec(html)) !== null) {
+    if (!seen[m[1]]) { seen[m[1]] = true; fileIds.push(m[1]); }
+  }
+  if (!fileIds.length) return html;
+
+  // Fetch all thumbnails in parallel — avoids sequential timeout with many receipts.
+  // sz=w700-h900: readable when printed on A4, keeps each thumbnail ~60-150 KB.
+  var requests = fileIds.map(function(id) {
+    return {
+      url: 'https://drive.google.com/thumbnail?id=' + id + '&sz=w700-h900',
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true,
+      followRedirects: true
+    };
+  });
+
+  var responses;
+  try { responses = UrlFetchApp.fetchAll(requests); }
+  catch (e) { Logger.log('fetchAll error: ' + e); return html; }
+
+  var uriMap = {};
+  fileIds.forEach(function(id, i) {
     try {
-      // Thumbnail at up to 1200×1600 px — legible when printed, keeps HTML manageable.
-      var thumbUrl = 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w1200-h1600';
-      var res = UrlFetchApp.fetch(thumbUrl, {
-        headers: { Authorization: 'Bearer ' + token },
-        muteHttpExceptions: true,
-        followRedirects: true
-      });
-      if (res.getResponseCode() === 200) {
-        return 'src="data:image/jpeg;base64,' + Utilities.base64Encode(res.getContent()) + '"';
+      var res = responses[i];
+      var ct  = String(res.getHeaders()['Content-Type'] || res.getHeaders()['content-type'] || '');
+      if (res.getResponseCode() === 200 && ct.indexOf('image') !== -1) {
+        uriMap[id] = 'data:image/jpeg;base64,' + Utilities.base64Encode(res.getContent());
+        return;
       }
-      // Fallback: raw file if ≤ 1 MB
-      var blob = DriveApp.getFileById(fileId).getBlob();
-      var raw = blob.getBytes();
-      if (raw.length <= 1048576) {
-        return 'src="data:' + (blob.getContentType() || 'image/jpeg') + ';base64,' + Utilities.base64Encode(raw) + '"';
+    } catch (e) { /* skip */ }
+    // Fallback: raw file only if ≤ 700 KB (avoids bloating the HTML)
+    try {
+      var blob = DriveApp.getFileById(id).getBlob();
+      var raw  = blob.getBytes();
+      if (raw.length <= 716800) {
+        uriMap[id] = 'data:' + (blob.getContentType() || 'image/jpeg') + ';base64,' + Utilities.base64Encode(raw);
       }
-      return 'src=""';
-    } catch (e) {
-      return 'src=""';
-    }
+    } catch (fe) { /* skip */ }
+  });
+
+  return html.replace(/src="drive-embed:\/\/([^"]+)"/g, function(match, id) {
+    return uriMap[id] ? 'src="' + uriMap[id] + '"' : 'src=""';
   });
 }
 
